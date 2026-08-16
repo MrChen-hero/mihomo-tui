@@ -1,0 +1,31 @@
+{
+  "name": "mihomo-tui",
+  "version": "0.1.0",
+  "description": "CLI + TUI manager for the mihomo proxy kernel (REST API only, never writes config.yaml)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "mihomo-tui": "bin/mihomo-tui"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.tsx",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "commander": "^15.0.0",
+    "ink": "^7.1.1",
+    "react": "^19.2.8",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "tsx": "^4.23.12",
+    "typescript": "~5.9.3"
+  }
+}

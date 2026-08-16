@@ -1,0 +1,156 @@
+/** 标签页 4：连接管理 */
+import { useEffect, useMemo, useState } from 'react'
+import { Box, Text, useInput } from 'ink'
+import { MihomoClient } from '../api/client.js'
+import { ScrollList } from '../components/ScrollList.js'
+import { formatBytes, fitDisplay, padDisplay } from '../commands/output.js'
+import type { ConnectionItem } from '../api/types.js'
+import type { AppConfig } from '../config.js'
+
+export interface ConnsViewProps {
+  config: AppConfig
+  data: { downloadTotal: number; uploadTotal: number; connections: ConnectionItem[] | null } | undefined
+  height: number
+  width: number
+  active: boolean
+  onMessage: (text: string) => void
+}
+
+type SortKey = 'traffic' | 'time' | 'host'
+
+function describeHost(conn: ConnectionItem): string {
+  const { host, sniffHost, destinationIP, destinationPort } = conn.metadata
+  const name = host || sniffHost || destinationIP || '?'
+  return destinationPort ? `${name}:${destinationPort}` : name
+}
+
+function formatDuration(start: string): string {
+  const began = Date.parse(start)
+  if (Number.isNaN(began)) return '---'
+  const seconds = Math.max(0, Math.floor((Date.now() - began) / 1000))
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m${seconds % 60}s`
+  return `${Math.floor(seconds / 3600)}h${Math.floor((seconds % 3600) / 60)}m`
+}
+
+export function ConnsView({ config, data, height, width, active, onMessage }: ConnsViewProps) {
+  const client = useMemo(() => new MihomoClient(config), [config])
+  const [index, setIndex] = useState(0)
+  const [sort, setSort] = useState<SortKey>('traffic')
+  const [confirmAll, setConfirmAll] = useState(false)
+
+  // 无连接时内核返回 null 而非 []（SPEC 3.5）
+  const conns = data?.connections ?? []
+
+  const sorted = useMemo(() => {
+    const list = [...conns]
+    if (sort === 'time') return list.sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
+    if (sort === 'host') return list.sort((a, b) => describeHost(a).localeCompare(describeHost(b)))
+    return list.sort((a, b) => b.download + b.upload - (a.download + a.upload))
+  }, [conns, sort])
+
+  useEffect(() => {
+    if (index >= sorted.length) setIndex(Math.max(0, sorted.length - 1))
+  }, [sorted.length, index])
+
+  const current = sorted[index]
+
+  useInput(
+    (input, key) => {
+      if (confirmAll) {
+        // 二次确认：只有明确按 y 才执行，其他任何键都取消
+        if (input === 'y' || input === 'Y') {
+          void client.closeAllConnections().then(() => onMessage('已关闭全部连接'))
+        } else {
+          onMessage('已取消')
+        }
+        setConfirmAll(false)
+        return
+      }
+      if (key.upArrow || input === 'k') {
+        setIndex((i) => Math.max(0, i - 1))
+        return
+      }
+      if (key.downArrow || input === 'j') {
+        setIndex((i) => Math.min(sorted.length - 1, i + 1))
+        return
+      }
+      if (input === 'd' && current) {
+        void client
+          .closeConnection(current.id)
+          .then(() => onMessage(`已关闭 ${describeHost(current)}`))
+          .catch((err: unknown) =>
+            onMessage(`关闭失败：${err instanceof Error ? err.message : String(err)}`),
+          )
+        return
+      }
+      if (input === 'D') {
+        if (conns.length === 0) {
+          onMessage('当前无连接')
+          return
+        }
+        setConfirmAll(true)
+        return
+      }
+      if (input === 's') {
+        const order: SortKey[] = ['traffic', 'time', 'host']
+        const next = order[(order.indexOf(sort) + 1) % order.length] ?? 'traffic'
+        setSort(next)
+        onMessage(`排序 → ${next}`)
+      }
+    },
+    { isActive: active },
+  )
+
+  const listHeight = Math.max(3, height - 4)
+  const narrow = width < 100
+  const hostWidth = narrow ? Math.max(18, width - 34) : Math.max(24, Math.floor(width * 0.32))
+
+  return (
+    <Box flexDirection="column" flexGrow={1}>
+      <Text bold underline>
+        {' '}
+        {padDisplay('HOST', hostWidth - 1)}
+        {narrow ? '' : padDisplay('CHAIN', 24)}
+        {padDisplay('↑', 10)}
+        {padDisplay('↓', 10)}
+        {'TIME'}
+      </Text>
+      <ScrollList
+        items={sorted}
+        selected={index}
+        height={listHeight}
+        emptyText="当前无活跃连接"
+        renderItem={(conn, _i, isSelected) => (
+          <Text
+            color={isSelected ? 'black' : undefined}
+            backgroundColor={isSelected ? 'cyan' : undefined}
+            wrap="truncate-end"
+          >
+            {`${isSelected ? '>' : ' '}`}
+            {fitDisplay(describeHost(conn), hostWidth - 2)}
+            {' '}
+            {/* chains 从出口到入口排列，首位即实际出口节点 */}
+            {narrow ? '' : `${fitDisplay(conn.chains.at(0) ?? '', 23)} `}
+            {padDisplay(formatBytes(conn.upload), 10)}
+            {padDisplay(formatBytes(conn.download), 10)}
+            {formatDuration(conn.start)}
+          </Text>
+        )}
+      />
+
+      {confirmAll ? (
+        <Box borderStyle="round" borderColor="red" paddingX={1}>
+          <Text color="red" bold>
+            {`确认关闭全部 ${conns.length} 条连接？按 y 确认，其他键取消`}
+          </Text>
+        </Box>
+      ) : (
+        <Text dimColor>
+          {` 共 ${conns.length} 条  累计 ↑${formatBytes(data?.uploadTotal ?? 0)} ↓${formatBytes(data?.downloadTotal ?? 0)}  排序：${sort}`}
+        </Text>
+      )}
+      <Text dimColor>{' ↑↓ 移动  d 关闭选中  D 关闭全部  s 切换排序'}</Text>
+    </Box>
+  )
+}
