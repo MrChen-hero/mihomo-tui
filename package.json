@@ -4,6 +4,24 @@
   "description": "CLI + TUI manager for the mihomo proxy kernel (REST API only, never writes config.yaml)",
   "type": "module",
   "private": true,
+  "license": "MIT",
+  "author": "MrChen-hero",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MrChen-hero/mihomo-tui.git"
+  },
+  "homepage": "https://github.com/MrChen-hero/mihomo-tui#readme",
+  "bugs": "https://github.com/MrChen-hero/mihomo-tui/issues",
+  "keywords": [
+    "mihomo",
+    "clash",
+    "clash-meta",
+    "tui",
+    "cli",
+    "proxy",
+    "terminal",
+    "ink"
+  ],
   "engines": {
     "node": ">=22"
   },
