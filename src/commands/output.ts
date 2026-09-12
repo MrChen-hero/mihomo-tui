@@ -15,46 +15,10 @@ export function printJson(value: unknown): void {
 
 /**
  * 订阅 URL 含 token，任何展示都必须脱敏。
- * 同时覆盖 query 参数式与路径式两种 token 形态。
+ * 实现随 v0.2.0 迁至 config/subscriptions.ts（清单模块是 token 的属主），
+ * 这里保留导出以维持既有调用方与测试的导入路径。
  */
-/** 值看起来像凭证就脱敏：长十六进制串、uuid、长 base64 —— 不依赖键名 */
-function looksLikeSecret(value: string): boolean {
-  return (
-    /^[0-9a-f]{16,}$/i.test(value) ||
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ||
-    /^[A-Za-z0-9_-]{24,}$/.test(value)
-  )
-}
-
-/**
- * 订阅 URL 含 token，任何展示都必须脱敏。
- *
- * 按键名与按值形态双重判断 —— 实测机场用的参数名五花八门
- * （`token`、`OwO`），只看键名会漏。
- */
-export function redactUrl(url: string): string {
-  if (!url) return url
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return url
-  }
-  // 手工拼接而非用 searchParams.set —— 后者会把 <REDACTED> 的尖括号转义成 %3C%3E
-  const query = [...parsed.searchParams.entries()]
-    .map(([key, value]) =>
-      /token|secret|key|password|auth|uuid|sub/i.test(key) || looksLikeSecret(value)
-        ? `${key}=<REDACTED>`
-        : `${key}=${value}`,
-    )
-    .join('&')
-  // 形如 /api/v1/client/subscribe/<32位以上十六进制或 uuid> 的路径段
-  const path = parsed.pathname.replace(
-    /\/[0-9a-f]{16,}(?=\/|$)|\/[0-9a-f-]{32,}(?=\/|$)/gi,
-    '/<REDACTED>',
-  )
-  return `${parsed.origin}${path}${query ? `?${query}` : ''}`
-}
+export { redactUrl } from '../config/subscriptions.js'
 
 /**
  * 终端宽度。
