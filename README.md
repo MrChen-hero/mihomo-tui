@@ -1,64 +1,135 @@
 # mihomo-tui
 
-mihomo 代理内核的 **CLI + TUI** 管理工具。切节点、更新订阅、看实时日志、管连接，全部通过本机
-`127.0.0.1:19090` 的 REST API 完成。
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)](package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](package.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/MrChen-hero/mihomo-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/MrChen-hero/mihomo-tui/actions/workflows/ci.yml)
 
-**运行时代码绝不写 `config.yaml`。** 配置改造只由 `scripts/migrate-config.mjs` 在显式
-`--apply` 时执行，且强制备份 + `mihomo -t` 校验，校验失败拒绝写入。
+[mihomo](https://wiki.metacubex.one/)（Clash.Meta）内核的 **CLI + TUI** 管理工具。
+切节点、更新订阅、看实时日志、管连接，全部通过本机 External Controller 的
+REST API 完成 —— **运行时代码绝不写 `config.yaml`**。
+
+```txt
+┌─ mihomo-tui ────────────────────────────────────┐
+│ [1]节点 [2]订阅 [3]日志 [4]连接      ↑↓选择 ESC退出 │
+├─────────────────────────────────────────────────┤
+│ PROXY       → AUTO                              │
+│ AUTO        → [A]日本1          166ms           │
+│ 日本        → [B]高速02          213ms           │
+│ 机场-alpha  → 新加坡2         ---（未测试）     │
+└─────────────────────────────────────────────────┘
+```
+
+## 目录
+
+- [特性](#特性)
+- [环境要求](#环境要求)
+- [安装](#安装)
+- [快速开始](#快速开始)
+- [TUI 使用](#tui-使用)
+- [CLI 使用](#cli-使用)
+- [配置](#配置)
+- [配置架构：骨架 + Provider](#配置架构骨架--provider)
+- [迁移脚本](#迁移脚本)
+- [常见问题与已知限制](#常见问题与已知限制)
+- [开发](#开发)
+- [路线图](#路线图)
+- [贡献](#贡献)
+- [许可证](#许可证)
+
+## 特性
+
+- **双入口**：TUI 适合日常操作，CLI 适合脚本化与管道场景（全命令支持 `--json`）
+- **节点管理**：双栏选择代理组与节点，延迟五状态显示（正常 / 一般 / 缓慢 / 未测试 / 超时），
+  严格区分「未测试」与「不可用」；单节点与整组并发测速；url-test 组钉选与解除
+- **订阅管理**：查看节点数 / 流量 / 到期时间，一键更新单个或全部订阅，健康检查，
+  更新失败完整展示错误（订阅域名失效、被 403 都是常态）
+- **实时监控**：WebSocket 日志流（级别切换、关键字过滤、环形缓冲 1000 行）、
+  连接流（排序、关闭）、底部状态栏常驻显示内核版本 / 模式 / 速率 / 流量 / 内存
+- **模式切换**：规则 / 全局 / 直连循环切换，热重载配置无需重启内核
+- **安全边界**：运行时不具备写 `config.yaml` 的代码路径，最坏后果只是选错节点，
+  一条命令即可改回；配置改造只由迁移脚本在显式确认后执行
+
+### 它解决什么问题
+
+传统「整份订阅覆盖 config.yaml」的用法有几个痛点，本项目通过
+「骨架 + proxy-providers 配置架构 + API 操作层」一并解决：
+
+| 痛点 | 解决方式 |
+|---|---|
+| 订阅一更新，手工修改的端口 / DNS / 规则全部丢失 | 订阅只作为 provider 数据源，骨架配置永不触碰 |
+| 多份订阅互斥，无法混用不同机场的节点 | 多 provider 同时挂载，节点可混在同一个组里 |
+| 切换订阅要重启内核，掐断所有连接 | 更新订阅走 API（`PUT /providers/proxies/{name}`），内核不重启 |
+| 看不到节点存活与延迟 | 健康检查数据直接展示，支持手动测速 |
+| 看不到订阅流量与到期时间 | 自动解析 `Subscription-Userinfo` 响应头 |
+
+## 环境要求
+
+- **Node.js ≥ 22**（依赖内置的 `fetch` 与全局 `WebSocket`，不依赖 ws / undici / axios）
+- 一个正在运行的 mihomo 内核，且配置了 `external-controller`（本工具默认连接
+  `http://127.0.0.1:19090`，可在配置文件中修改）
+- 可选：Linux + systemd（`--user` 服务），仅影响迁移脚本的部分检查项
 
 ## 安装
 
+从源码安装：
+
 ```bash
-cd ~/projects/mihomo-tui
+git clone https://github.com/MrChen-hero/mihomo-tui.git
+cd mihomo-tui
 npm install
 npm run build
 ```
 
-`~/.bashrc` 中已有 `proxy_tui` 函数，新开终端即可用；当前终端执行 `source ~/.bashrc` 生效。
+建议在 `~/.bashrc` 中加一个入口函数（路径按实际克隆位置调整）：
 
-首次运行会自动生成 `~/.config/mihomo-tui/config.json`：
-
-```json
-{
-  "api": "http://127.0.0.1:19090",
-  "secret": "",
-  "mihomoDir": "/4t/usr/chenjw/.config/mihomo",
-  "testUrl": "https://www.gstatic.com/generate_204",
-  "testTimeout": 5000,
-  "delayThresholds": { "good": 300, "fair": 800 }
+```bash
+proxy_tui() {
+    local bin="$HOME/mihomo-tui/bin/mihomo-tui"
+    if [ ! -x "$bin" ]; then
+        echo "mihomo-tui not found or not executable: $bin" >&2
+        return 1
+    fi
+    "$bin" "$@"
 }
 ```
 
-`testUrl` 用 `gstatic.com` 而非 `cp.cloudflare.com` —— 后者经本机节点实测全部失败。
+新开终端（或 `source ~/.bashrc`）后即可使用 `proxy_tui` 命令。
 
-## 用法
-
-### TUI
+## 快速开始
 
 ```bash
-proxy_tui            # 无参数进入 TUI
+proxy_tui status    # 先确认能连上内核：打印版本、模式、端口、provider 概览
+proxy_tui           # 无参数进入 TUI
 ```
 
-四个标签页，数字键 `1`–`4` 切换，`Tab` 循环，`q` 或 `Ctrl+C` 退出。
+## TUI 使用
 
-**[1] 节点** —— 左栏代理组，右栏该组节点。默认只列**含真实节点的组**，
-按延迟升序排列，可用节点浮在顶部。
+四个标签页，数字键 `1`–`4` 直接切换，`Tab` 循环，`Ctrl+C` 或 `ESC` 退出。
+
+### [1] 节点
+
+左栏代理组，右栏该组节点。默认只列**含真实节点的组**，按延迟升序排列，
+可用节点浮在顶部。
 
 | 键 | 作用 |
 |---|---|
 | `↑↓` / `jk` | 移动光标 |
 | `←→` / `hl` | 左右切栏 |
-| `Enter` | 选用节点（对 url-test 组会「钉选」） |
-| `u` | 解除钉选，恢复自动选路 |
+| `Enter` | 选用节点（自动组会联动切换 PROXY 到对应区域组） |
+| `u` | 恢复自动选路（PROXY → AUTO） |
 | `t` | 测速：焦点在左栏测整组，在右栏测单个节点 |
+| `T` | 整组测速 |
 | `s` | 切换排序（延迟升序 / 配置顺序） |
 | `v` | 只看可用（滤掉超时与未测试） |
-| `a` | 显示/隐藏聚合组（成员全是其他组的组，如 AI、Google） |
 | `m` | 切换模式（规则 → 全局 → 直连 → 规则） |
 | `r` | 刷新 |
 
-节点状态五分显示，**「未测试」与「不可用」严格区分** —— `lazy: true` 的组在被使用前
-所有节点的 `history` 都是空的，不能把没测过当成挂了：
+解除 url-test / fallback 组的钉选请使用 CLI：`proxy_tui proxy unfix <组名>`。
+
+节点状态五分显示——`lazy: true` 的组在被使用前所有节点的 `history` 都是空的，
+所以「未测试」与「不可用」严格区分：
 
 | 状态 | 显示 |
 |---|---|
@@ -68,22 +139,43 @@ proxy_tui            # 无参数进入 TUI
 | 未测试 | 灰色 `---` |
 | 超时/错误 | 红色 `超时` |
 
-**[2] 订阅** —— `u` 更新当前项，`U` 更新全部，`c` 健康检查，`Enter` 展开节点列表。
+### [2] 订阅
+
+| 键 | 作用 |
+|---|---|
+| `u` | 更新当前订阅 |
+| `U` | 更新全部订阅 |
+| `c` | 健康检查 |
+| `Enter` | 展开该订阅的节点列表 |
+| `r` | 刷新 |
+
 更新失败会把完整错误显示在红框里（订阅域名失效、经代理被 403 都是常态）。
 
-**[3] 日志** —— `l` 循环切级别，`/` 输入关键字过滤，`Space` 暂停/恢复，`c` 清屏。
-环形缓冲上限 1000 行。
+### [3] 日志
 
-**[4] 连接** —— `d` 关闭选中，`D` 关闭全部（需按 `y` 二次确认），`s` 切换排序。
+| 键 | 作用 |
+|---|---|
+| `l` | 循环切换级别（silent / error / warning / info / debug） |
+| `/` | 输入关键字过滤 |
+| `Space` | 暂停 / 恢复滚动 |
+| `c` | 清屏 |
 
-底部状态栏常驻，显示内核版本、当前模式、实时速率、累计流量、内存、控制口连接状态。
+环形缓冲上限 1000 行，长时运行内存稳定。
 
-**模式说明：**
-- **规则** —— 根据配置文件中的规则分流（默认）
-- **全局** —— 所有流量都走代理
-- **直连** —— 所有流量都直连，不走代理
+### [4] 连接
 
-### CLI
+| 键 | 作用 |
+|---|---|
+| `d` | 关闭选中连接 |
+| `D` | 关闭全部（需按 `y` 二次确认） |
+| `s` | 切换排序（流量 / 时间 / 主机） |
+
+### 底部状态栏
+
+所有标签页常驻，显示：内核版本、当前模式、实时速率、累计流量、内存、
+控制口连接状态。内核连不上时转红显示断开状态。
+
+## CLI 使用
 
 每条命令输出一行或一张表，均支持 `--json` 供 `jq` 消费。
 
@@ -91,15 +183,15 @@ proxy_tui            # 无参数进入 TUI
 proxy_tui status                        # 内核版本、模式、端口、provider 概览
 proxy_tui proxy ls                      # 列出所有代理组及当前选中
 proxy_tui proxy ls 香港                  # 列出该组节点、延迟、状态
-proxy_tui proxy use <组> <节点>          # 切换节点
+proxy_tui proxy use <组> <节点>          # 切换节点（url-test 组会钉选并提示）
 proxy_tui proxy unfix <组>              # 解除 url-test/fallback 组的钉选
-proxy_tui proxy test 香港                # 整组延迟测试
+proxy_tui proxy test 香港 -u <url> -t 5000   # 整组延迟测试，可自定义测速地址与超时
 proxy_tui provider ls                   # 订阅列表（节点数/流量/到期/更新时间）
 proxy_tui provider update [名称]        # 更新订阅，省略名称则全部
 proxy_tui provider check <名称>         # 触发健康检查
 proxy_tui logs -f                       # 实时日志跟随，Ctrl+C 退出
 proxy_tui logs -n 20 -g 'error'         # 抓 20 条含 error 的日志后退出
-proxy_tui conn ls                       # 当前连接，-s traffic/time/host，-n 限条数
+proxy_tui conn ls -s traffic -n 50      # 连接列表，按流量排序
 proxy_tui conn close <id|--all>         # 关闭连接（id 支持 8 位前缀）
 proxy_tui reload                        # 热重载配置（内核不重启）
 ```
@@ -107,45 +199,60 @@ proxy_tui reload                        # 热重载配置（内核不重启）
 组名含中文与 emoji 时正常传入即可，程序全程 `encodeURIComponent`：
 
 ```bash
-proxy_tui proxy ls '悦 · 🇭🇰 香港聚合'
+proxy_tui proxy ls '🇭🇰 香港聚合'
 ```
 
-**退出码**：`0` 成功，`1` 通用错误，`2` 参数错误，`3` 内核不可达。
+**退出码约定**：`0` 成功，`1` 通用错误，`2` 参数错误，`3` 内核不可达。
 
-## 配置架构
+## 配置
 
-`config.yaml` 为「骨架 + provider」两层结构，订阅更新不再覆盖任何自定义配置：
+程序自身配置位于 `~/.config/mihomo-tui/config.json`，首次运行自动生成：
+
+```json
+{
+  "api": "http://127.0.0.1:19090",
+  "secret": "",
+  "mihomoDir": "~/.config/mihomo",
+  "testUrl": "https://www.gstatic.com/generate_204",
+  "testTimeout": 5000,
+  "delayThresholds": { "good": 300, "fair": 800 }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `api` | mihomo External Controller 地址 |
+| `secret` | 控制口密钥，与 `external-controller` 的 `secret` 一致 |
+| `testUrl` | 延迟测试地址（默认 `gstatic.com`，实测比 `cp.cloudflare.com` 兼容性好） |
+| `testTimeout` | 单节点测速超时（毫秒） |
+| `delayThresholds` | 好 / 一般 / 缓慢三档延迟阈值 |
+
+命令行可用 `--api <url>` 与 `--secret <token>` 临时覆盖。
+
+## 配置架构：骨架 + Provider
+
+推荐的 mihomo 配置为「骨架 + provider」两层结构，订阅更新不再覆盖任何自定义配置：
 
 ```txt
 config.yaml（骨架，只维护一次）
 ├── 通用设置 / sniffer / dns / rules / rule-providers
 ├── proxy-providers:          ← 订阅作为节点来源
-│   ├── yuetoto  → ./providers/yuetoto.yaml
-│   ├── liangxin → ./providers/liangxin.yaml
-│   └── jkun     → ./providers/jkun.yaml
+│   ├── alpha → ./providers/alpha.yaml
+│   ├── beta  → ./providers/beta.yaml
 └── proxy-groups:
     ├── PROXY / AUTO / FALLBACK
-    ├── 区域组：香港 台湾 日本 韩国 新加坡 美国 英国 德国 荷兰 其他地区
-    ├── 机场组：机场-yuetoto / 机场-liangxin / 机场-jkun
-    └── 用途组：AI Google YouTube TikTok Telegram 社交媒体 流媒体 游戏平台 兜底分流
+    ├── 区域组：香港 台湾 日本 韩国 新加坡 美国 …
+    ├── 机场组：机场-alpha / 机场-beta
+    └── 用途组：AI Google YouTube Telegram 流媒体 …
 ```
 
-provider 的 `path` **必须是相对路径** —— mihomo 对此有路径安全校验，配置文件外的绝对路径会被拒绝。
+> **关键约束**：provider 的 `path` **必须是相对路径** —— mihomo 对此有路径安全
+> 校验，配置文件之外的绝对路径会被拒绝启动。
 
-### 迁移脚本
+## 迁移脚本
 
-订阅链接放在 `~/.config/mihomo-tui/subscriptions.json`（权限 600，含 token）：
-
-```json
-{
-  "subscriptions": [
-    { "name": "yuetoto", "prefix": "[Y] ", "url": "https://..." }
-  ]
-}
-```
-
-`name` 只能用字母数字与 `-_`（要作文件名）。`prefix` 会通过 `additional-prefix` 注入到
-节点名前，用于标记来源。
+`scripts/migrate-config.mjs` 负责把现有整份订阅配置一次性改造为上述架构。
+它是整个项目中**唯一**允许写 `config.yaml` 的入口，且安全机制齐全：
 
 ```bash
 node scripts/migrate-config.mjs --dry-run --diff   # 预览骨架与差异，不落盘
@@ -153,40 +260,93 @@ node scripts/migrate-config.mjs --apply            # 备份 + 校验 + 写入
 node scripts/migrate-config.mjs --apply --no-dns   # 写入但不改 dns 段
 ```
 
-安全保证：`--dry-run` 也会跑 `mihomo -t`；`--apply` 先备份再写，写入后再校验一次，
-失败自动从备份回滚；重复运行结果一致（幂等）。
+- 订阅链接放在 `~/.config/mihomo-tui/subscriptions.json`（权限 600，含 token）：
 
-## 已知环境限制
+```json
+{
+  "subscriptions": [
+    { "name": "alpha", "prefix": "[A] ", "url": "https://example.com/sub?token=..." }
+  ]
+}
+```
 
-本机实测结论，与工具本身无关但影响使用预期：
+- `name` 只能用字母数字与 `-_`（要作文件名）；`prefix` 会通过
+  `additional-prefix` 注入到节点名前，用于标记来源。
+- 安全保证：`--dry-run` 也会跑 `mihomo -t` 校验；`--apply` 先备份再写，
+  写入后再校验一次，失败自动从备份回滚；重复运行结果一致（幂等）。
+- 脚本会自动处理若干实测踩到的坑：DNS 上游可达性、`respect-rules` 与
+  `proxy-server-nameserver` 的成对约束、订阅域名 DIRECT 规则防拉取死锁、
+  过滤机场下发的「剩余流量 / 套餐到期」等伪装节点。
 
-1. **DNS 上游只有特定几个可用。** UDP 53 到公共 DNS（223.5.5.5 / 8.8.8.8 / 1.1.1.1）
-   和 DoT 853 全部不通；可用的是网关 `192.168.200.1:53` 与 IP 字面量的 DoH
-   （`https://1.12.12.12/dns-query`）。旧配置用 `nameserver: doh.pub` +
-   `default-nameserver: tls://223.5.5.5`，bootstrap 必然失败 —— 这是 `dns.enable`
-   长期只能设为 `false` 的真正原因。迁移脚本已改用可达的上游。
-2. **AI 服务商封锁机场出口 IP。** `claude.ai` 会 302 跳转到
-   `claude.com/app-unavailable-in-region`，`api.anthropic.com`、`chatgpt.com`、
-   `api.openai.com` 返回 403。测过 14 个不同地区出口，无一例外。这是节点 IP 问题，
-   改配置无法解决，需要带 AI 解锁的节点。`gemini.google.com` 正常。
-3. **`mihomo` 不回应 WebSocket close 帧。** 客户端 `close()` 握手永不完成，
-   底层句柄不释放。因此所有用到流的命令都显式 `process.exit`，非 `--follow` 的
-   `logs` 有 `--idle` 空闲超时（默认 5 秒）兜底。
+## 常见问题与已知限制
+
+**Q：延迟测试全部超时？**
+先确认测速地址本身可达：`curl -I https://www.gstatic.com/generate_204`。
+部分内网环境对特定测速域名不通，可在 `config.json` 中更换 `testUrl`。
+
+**Q：TUI 显示「内核不可达」？**
+确认 mihomo 正在运行且 `external-controller` 地址正确：
+
+```bash
+curl http://127.0.0.1:19090/version
+systemctl --user status mihomo   # 按你的实际部署方式
+```
+
+**Q：AI 服务商（Claude / ChatGPT）不可用？**
+多数机场出口 IP 被 AI 服务商封锁（403 或地区不可用页），这是节点 IP 问题，
+改配置无法解决，需要带 AI 解锁的节点。
+
+**Q：为什么日志命令有时不会立即退出？**
+mihomo 内核不回应 WebSocket close 帧，客户端关闭握手永不完成，因此所有用到
+流的命令都显式退出；非 `--follow` 的 `logs` 有 `--idle` 空闲超时（默认 5 秒）兜底。
+
+**Q：TUI 里的修改重启内核后会丢吗？**
+会。运行时操作（切节点、切模式）都是内存中变更，这是「不写配置文件」设计的
+必然结果。需要持久化的变更请编辑 `config.yaml` 后执行 `proxy_tui reload`。
 
 ## 开发
 
 ```bash
-npm run typecheck    # tsc --noEmit
-npm run build        # 编译到 dist/
-npm run dev -- status  # tsx 直跑源码
+npm run typecheck        # tsc --noEmit
+npm run build            # 编译到 dist/
+npm run dev -- status    # tsx 直跑源码
 ```
 
 `bin/mihomo-tui` 优先用 `dist/cli.js`，未编译时回退 tsx 直跑源码。
 
-**联调约束**：不要重启或停止生产的 `mihomo.service`。需要测试破坏性行为时起独立实例
-（自定义 `-d` 目录 + 未占用端口，如 27890/29090），用完清理。
+```txt
+src/
+├── api/          # REST 客户端 + WebSocket 流封装
+├── commands/     # CLI 子命令
+├── views/        # TUI 四个标签页
+├── components/   # DelayBadge / ScrollList / StatusBar
+├── hooks/        # useProxies / useProviders / useStream
+├── App.tsx       # TUI 根组件
+├── cli.tsx       # CLI/TUI 路由
+└── config.ts     # 配置读取
+```
 
-技术栈：Node 24（内置 `fetch` 与 `WebSocket`，不依赖 ws/undici/axios）+ Ink 7 +
-React 19 + commander 15，TypeScript 锁 5.x。
+更多设计与一手实测数据：
 
-详细设计与实测数据见 `SPEC.md`。
+| 文档 | 内容 |
+|---|---|
+| [`docs/SPEC.md`](docs/SPEC.md) | 完整设计规格：痛点分析、API 实测、架构决策、踩坑记录 |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | 开发文档：架构分层、核心实现、扩展指南、FAQ |
+| [`docs/specs/2026-08-17-subscription-management-design.md`](docs/specs/2026-08-17-subscription-management-design.md) | 订阅生命周期管理（v0.2.0）设计稿 |
+
+## 路线图
+
+- [x] v0.1.0 —— CLI + TUI + 配置迁移脚本
+- [ ] v0.2.0 —— TUI 内订阅生命周期管理（新增 / 删除 / 编辑，设计稿已完成）
+- [ ] 自动化测试覆盖
+- [ ] 批量导入订阅、订阅分组与历史记录
+
+## 贡献
+
+欢迎提交 Issue 与 Pull Request！请先阅读
+[CONTRIBUTING.md](CONTRIBUTING.md)，特别注意两条设计红线：
+运行时代码不写 `config.yaml`，不新增监听端口。
+
+## 许可证
+
+[MIT](LICENSE)

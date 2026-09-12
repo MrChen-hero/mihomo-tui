@@ -14,11 +14,12 @@ mihomo-tui 是一个基于 Node.js + TypeScript + Ink 开发的终端管理工�
 
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| Node.js | 18+ | 运行时 |
-| TypeScript | 5.x | 类型安全 |
+| Node.js | ≥ 22 | 运行时（内置 `fetch` 与 `WebSocket`，无需 ws/undici/axios）|
+| TypeScript | 5.x | 类型安全（勿升级 7.x，Ink 生态尚未适配）|
 | Ink | 7.x | TUI 框架（React for CLI）|
-| ws | 8.x | WebSocket 客户端（日志流、连接流）|
-| commander | 12.x | CLI 参数解析 |
+| React | 19.x | Ink 的 peer 依赖 |
+| commander | 15.x | CLI 参数解析 |
+| yaml | 2.x | 只用于读取配置做展示，不用于写 |
 
 ## 项目结构
 
@@ -27,36 +28,40 @@ mihomo-tui/
 ├── src/
 │   ├── api/              # API 客户端层
 │   │   ├── client.ts     # REST API 封装
+│   │   ├── status.ts     # 状态数据组装
 │   │   ├── stream.ts     # WebSocket 流基础设施
 │   │   └── types.ts      # API 类型定义
 │   ├── commands/         # CLI 命令实现
-│   │   ├── conn.ts       # 连接管理
+│   │   ├── conn.ts       # 连接管理（含 reload）
 │   │   ├── logs.ts       # 日志查询
-│   │   ├── output.ts     # 输出格式化工具
+│   │   ├── output.ts     # 输出格式化与统一退出
 │   │   ├── provider.ts   # 订阅管理
 │   │   ├── proxy.ts      # 节点管理
-│   │   ├── reload.ts     # 配置热重载
 │   │   └── status.ts     # 状态概览
-│   ├── components/       # TUI 组件
-│   │   ├── Connections.tsx   # 连接列表视图
-│   │   ├── Help.tsx          # 帮助面板
-│   │   ├── Logs.tsx          # 日志视图
-│   │   ├── Proxies.tsx       # 节点管理视图
-│   │   ├── Providers.tsx     # 订阅管理视图
+│   ├── components/       # TUI 通用组件
+│   │   ├── DelayBadge.tsx    # 延迟五状态着色标签
+│   │   ├── ScrollList.tsx    # 可滚动列表
 │   │   └── StatusBar.tsx     # 底部状态栏
 │   ├── hooks/            # React Hooks
-│   │   ├── useConnections.ts # 连接流
-│   │   ├── useLogs.ts        # 日志流
-│   │   ├── useProxies.ts     # 节点数据
-│   │   ├── useProviders.ts   # 订阅数据
-│   │   └── useStream.ts      # WebSocket 流基础
-│   ├── App.tsx           # TUI 主入口
+│   │   ├── useProxies.ts     # 节点数据（轮询 + 测速 + 切换）
+│   │   ├── useProviders.ts   # 订阅数据（轮询 + 更新）
+│   │   └── useStream.ts      # WebSocket 流（状态/日志/连接）
+│   ├── views/            # TUI 标签页视图
+│   │   ├── Conns.tsx         # [4] 连接
+│   │   ├── Logs.tsx          # [3] 日志
+│   │   ├── Providers.tsx     # [2] 订阅
+│   │   └── Proxies.tsx       # [1] 节点
+│   ├── App.tsx           # TUI 主入口（标签页容器 + 全局快捷键）
 │   ├── cli.tsx           # CLI + TUI 路由
 │   └── config.ts         # 配置管理
 ├── scripts/
-│   └── migrate-config.mjs    # 配置迁移脚本
+│   └── migrate-config.mjs    # 配置迁移脚本（唯一允许写 config.yaml 的入口）
+├── docs/                 # 设计与开发文档（本文件所在目录）
+├── bin/mihomo-tui        # 可执行入口
 ├── README.md             # 用户文档
-├── DEVELOPMENT.md        # 开发文档（本文件）
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── LICENSE
 └── package.json
 ```
 
@@ -741,7 +746,7 @@ MIT
 
 ## 联系方式
 
-项目地址：`/4t/usr/chenjw/projects/mihomo-tui`
+项目地址：<https://github.com/MrChen-hero/mihomo-tui>
 
 ---
 
