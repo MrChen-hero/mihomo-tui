@@ -48,6 +48,8 @@ export function createTerminal(element: React.ReactElement): Terminal {
     stdin,
     exitOnCtrlC: false,
     patchConsole: false,
+    // ink 7 在 CI 环境（is-in-ci）默认进入非交互模式、不写帧 —— 测试装置必须显式开启
+    interactive: true,
   })
 
   return {
