@@ -11,6 +11,7 @@
  * 重启后的 1.5s 宽限等待与 sleep 都可注入，测试无需真实计时。
  */
 import YAML from 'yaml'
+import type { AppConfig } from '../config.js'
 import { ConfigManager } from './manager.js'
 import { ServiceManager } from './service.js'
 import { buildSkeleton } from './skeleton.js'
@@ -93,6 +94,21 @@ export interface ChangeResult {
 
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * 从应用配置构造事务依赖。mihomoDir 来自 config.json（v0.2.0 起是关键配置，
+ * 指向内核配置目录）；测试通过 overrides 注入临时目录与 stub 二进制。
+ */
+export function depsFromAppConfig(
+  config: AppConfig,
+  overrides: Partial<ServiceDeps> = {},
+): ServiceDeps {
+  return {
+    manager: new ConfigManager(config.mihomoDir),
+    service: new ServiceManager(),
+    ...overrides,
+  }
+}
 
 function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
