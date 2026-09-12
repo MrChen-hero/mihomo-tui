@@ -171,6 +171,7 @@ export function App({ config, version, mode, port }: AppProps) {
         {tab === 1 ? (
           <ProvidersView
             providers={providers}
+            config={config}
             height={bodyHeight}
             width={size.columns}
             tick={tick}
