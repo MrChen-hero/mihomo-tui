@@ -5,10 +5,15 @@
 mihomo-tui 是一个基于 Node.js + TypeScript + Ink 开发的终端管理工具，用于通过 REST API 控制 mihomo 代理内核。
 
 **核心设计原则：**
-- ✓ 运行时代码**绝不写** `config.yaml`，所有操作通过 API 完成
-- ✓ 配置变更只由迁移脚本在显式 `--apply` 时执行，且强制备份 + 校验
+- ✓ 日常操作（切节点 / 更新订阅 / 切模式）通过 API 完成，不触碰配置文件
+- ✓ 写 `config.yaml` 的代码路径只有一条：`src/config/manager.ts` 的
+  `ConfigManager`，强制走「备份 → `mihomo -t` 校验 → 原子写 → 写后复验 →
+  失败自动回滚」事务流程（v0.2.0 起）
+- ✓ 订阅增删改由 `src/config/subscriptionService.ts` 编排：清单、配置、
+  服务三者同进同退，任何一步失败整体回滚
 - ✓ TUI 与 CLI 双模式，管道场景自动降级为 CLI
 - ✓ 内存安全：环形缓冲、按需渲染、可见性控制
+- ✓ 订阅 URL 的 token 在一切展示与日志中脱敏（`redactUrl`）
 
 ## 技术栈
 
@@ -19,7 +24,8 @@ mihomo-tui 是一个基于 Node.js + TypeScript + Ink 开发的终端管理工�
 | Ink | 7.x | TUI 框架（React for CLI）|
 | React | 19.x | Ink 的 peer 依赖 |
 | commander | 15.x | CLI 参数解析 |
-| yaml | 2.x | 只用于读取配置做展示，不用于写 |
+| yaml | 2.x | 配置生成与解析 |
+| vitest | 5.x | 测试（+ @vitest/coverage-v8）|
 
 ## 项目结构
 
@@ -38,10 +44,20 @@ mihomo-tui/
 │   │   ├── provider.ts   # 订阅管理
 │   │   ├── proxy.ts      # 节点管理
 │   │   └── status.ts     # 状态概览
+│   ├── config/           # v0.2.0 订阅事务层
+│   │   ├── types.ts               # 共享类型
+│   │   ├── subscriptions.ts       # 订阅清单读写（原子写）/ 校验 / redactUrl
+│   │   ├── skeleton.ts            # 骨架生成（纯函数，自迁移脚本迁移）
+│   │   ├── manager.ts             # ConfigManager：唯一写 config.yaml 的模块
+│   │   ├── service.ts             # ServiceManager：systemctl 操作（可注入）
+│   │   └── subscriptionService.ts # add/delete/edit 事务编排 + 回滚
 │   ├── components/       # TUI 通用组件
 │   │   ├── DelayBadge.tsx    # 延迟五状态着色标签
 │   │   ├── ScrollList.tsx    # 可滚动列表
-│   │   └── StatusBar.tsx     # 底部状态栏
+│   │   ├── StatusBar.tsx     # 底部状态栏
+│   │   ├── InputDialog.tsx   # 多字段输入对话框（实时校验 / readonly）
+│   │   ├── ConfirmDialog.tsx # 确认对话框（danger 模式）
+│   │   └── ProgressDialog.tsx# 进度对话框
 │   ├── hooks/            # React Hooks
 │   │   ├── useProxies.ts     # 节点数据（轮询 + 测速 + 切换）
 │   │   ├── useProviders.ts   # 订阅数据（轮询 + 更新）
@@ -49,13 +65,18 @@ mihomo-tui/
 │   ├── views/            # TUI 标签页视图
 │   │   ├── Conns.tsx         # [4] 连接
 │   │   ├── Logs.tsx          # [3] 日志
-│   │   ├── Providers.tsx     # [2] 订阅
-│   │   └── Proxies.tsx       # [1] 节点
+│   │   ├── Providers.tsx     # [2] 订阅（v0.2.0 起含增删改流程）
+│   │   ├── Proxies.tsx       # [1] 节点
+│   │   └── subscriptionFields.ts # 订阅表单逐字段校验（纯函数）
 │   ├── App.tsx           # TUI 主入口（标签页容器 + 全局快捷键）
 │   ├── cli.tsx           # CLI + TUI 路由
-│   └── config.ts         # 配置管理
+│   └── config.ts         # mihomo-tui 自身配置（区别于内核 config.yaml）
 ├── scripts/
-│   └── migrate-config.mjs    # 配置迁移脚本（唯一允许写 config.yaml 的入口）
+│   ├── migrate-config.mjs     # 一次性迁移脚本（保留为对照组）
+│   ├── generate-config.mjs    # v0.2.0 只读验收入口（dry-run，不写盘）
+│   └── smoke-subscription.mjs # 真实内核冒烟脚本（手动执行）
+├── vitest.config.ts      # 测试配置
+├── vitest.setup.ts       # 防护网：禁止测试写入生产配置目录
 ├── docs/                 # 设计与开发文档（本文件所在目录）
 ├── bin/mihomo-tui        # 可执行入口
 ├── README.md             # 用户文档
@@ -144,10 +165,15 @@ export function createStream(config: Config, topic: string, options: StreamOptio
 
 - 显示所有 provider：节点数、流量、到期时间、最后更新时间
 - 快捷键：
+  - `a` - 新增订阅（名称 / URL / 前缀表单，实时校验）
+  - `d` - 删除当前订阅（danger 确认框）
+  - `e` - 编辑当前订阅的节点名前缀（名称只读）
   - `u` - 更新当前 provider
   - `U` - 更新全部 provider
   - `c` - 健康检查
   - `Enter` - 展开节点列表
+- 增删改走 `subscriptionService` 事务：进度对话框逐步展示，
+  失败自动回滚并把 `systemctl status` 放进错误框
 
 **日志视图 (`Logs.tsx`)**
 
@@ -473,12 +499,50 @@ useEffect(() => {
 - 整组测速：`Promise.all` 并发，但单个失败不影响其他
 - 订阅更新：顺序执行，避免并发冲突
 
+## 订阅事务层（v0.2.0）
+
+### 模块与依赖
+
+```
+Providers.tsx ──► subscriptionService.ts（编排）
+                      ├─► subscriptions.ts  订阅清单：读（校验+排序）/ 原子写
+                      ├─► skeleton.ts       骨架生成（纯函数，warnings 上报）
+                      ├─► manager.ts        ConfigManager：备份/校验/原子写/回滚
+                      └─► service.ts        ServiceManager：systemctl 操作
+```
+
+### 事务流程（增删改共用）
+
+```
+校验输入 → 更新订阅清单 → 生成新骨架 → 备份 config.yaml
+        → 临时目录 mihomo -t 预校验 → 原子写入（tmp+rename）
+        → 写后复验 → ensureProvidersDir → 重启 mihomo → 等待 1.5s → is-active
+```
+
+任何一步失败的回滚规则（设计稿 6.1）：
+
+| 已改动的内容 | 回滚动作 |
+|---|---|
+| 订阅清单 | 从内存中的旧清单恢复 |
+| config.yaml（已写入） | 从备份恢复 + 重启服务 |
+| 回滚本身失败 | 原错误与回滚错误合并上抛，绝不静默 |
+
+### 关键约束
+
+- `ConfigManager.validate` 永远在 `mkdtemp` 临时目录里跑 `mihomo -t`，
+  校验过程不往真实配置目录写任何东西
+- `ServiceManager.systemctlBin` 可注入：测试传 stub 脚本路径，
+  物理上不可能重启真实服务
+- 骨架生成是确定性的：相同订阅集合产出逐字节一致的 YAML
+  （`scripts/generate-config.mjs` 可对真实配置做只读对照验收）
+- 配置备份 `config.yaml.bak.<时间戳>` 保留 7 天（`pruneBackups`）
+
 ## 配置迁移
 
 **迁移脚本 (`scripts/migrate-config.mjs`)**
 
 安全三步：
-1. 备份原文件到 `.backup/config.{timestamp}.yaml`
+1. 备份原文件为 `config.yaml.bak.<时间戳>`
 2. 写入新配置
 3. `mihomo -t` 校验，失败则回滚
 
@@ -487,10 +551,17 @@ useEffect(() => {
 node scripts/migrate-config.mjs --apply
 ```
 
+**v0.2.0 新增工具：**
+```bash
+node scripts/generate-config.mjs        # 只读：生成骨架 + mihomo -t 校验
+node scripts/smoke-subscription.mjs     # 真实内核冒烟（会重启服务，手动执行）
+```
+
 **关键约定：**
-- 运行时代码**绝不**写 `config.yaml`
-- 所有操作通过 API 完成（内存中变更）
-- 持久化只在显式迁移时发生
+- 日常运行时操作（切节点 / 更新订阅 / 切模式）只走 API，内存中变更
+- 写 `config.yaml` 只发生在订阅增删改事务与迁移脚本中，且必须走
+  备份 → 校验 → 原子写 → 回滚流程
+- 持久化变更也可以手动编辑 `config.yaml` 后 `proxy_tui reload`
 
 ## 开发指南
 
@@ -595,23 +666,32 @@ program
 
 ### 测试
 
-**自动化测试脚本：**
-
-```python
-# /tmp/test_feature.py
-import subprocess
-import requests
-
-API = "http://127.0.0.1:19090"
-
-def test_feature():
-    resp = requests.get(f"{API}/new-endpoint")
-    assert resp.status_code == 200
-    print("✓ Feature test passed")
-
-if __name__ == "__main__":
-    test_feature()
+```bash
+npm test                 # vitest run（全量，约 2 秒）
+npm run test:watch       # 监听模式
+npm run coverage         # 覆盖率报告（v8）
 ```
+
+**分层：**
+
+| 层 | 位置 | 方式 |
+|---|---|---|
+| 纯函数（脱敏/宽度/表格/环形缓冲/骨架生成） | `src/**/__tests__/*.test.ts` | 直接断言 |
+| 配置读取与清单读写 | `src/__tests__/`、`src/config/__tests__/` | tmpdir 注入路径 |
+| REST 客户端 | `src/api/__tests__/client.test.ts` | 本地 node:http 假内核 |
+| WebSocket 状态机 | `src/api/__tests__/stream.test.ts` | FakeWebSocket + fake timers |
+| ConfigManager / ServiceManager | `src/config/__tests__/` | stub mihomoBin / stub systemctl |
+| 订阅事务（含逐阶段回滚） | `src/config/__tests__/subscriptionService.test.ts` | 全 mock + tmpdir |
+| TUI 对话框与视图流程 | `src/components/__tests__/`、`src/views/__tests__/` | 无头 Ink 渲染（帧捕获 + 按键注入） |
+
+**测试铁律：**
+
+- 所有文件操作一律 `mkdtempSync(tmpdir())` 注入路径，**禁止**读写真实的
+  `~/.config/mihomo{,-tui}` —— `vitest.setup.ts` 会在越界写入时直接抛错
+- 绝不在测试中调用真实 `systemctl` / `mihomo` 二进制（stub + 注入）
+- 测试 fixture 只用假 URL / 假 token
+- 依赖注入缝隙：`loadConfig(path)`、`ConfigManager(mihomoDir, mihomoBin)`、
+  `ServiceManager(serviceName, systemctlBin)`、`ServiceDeps`
 
 ### 调试
 
@@ -678,13 +758,13 @@ curl -I https://www.gstatic.com/generate_204
 
 ### Q: 配置变更丢失
 
-**A:** 记住核心原则：**运行时代码绝不写 `config.yaml`**。
-
-所有 TUI/CLI 操作都是内存中变更，重启 mihomo 后丢失。
+**A:** 运行时操作（切节点 / 切模式）是内存中变更，重启 mihomo 后丢失。
 
 如需持久化：
 1. 编辑 `~/.config/mihomo/config.yaml`
 2. 运行 `proxy_tui reload` 热重载
+
+订阅的增删改（v0.2.0）本身就是持久化事务，带备份与回滚。
 
 ## 贡献指南
 
@@ -717,7 +797,20 @@ chore: 构建/工具链变更
 
 ## 版本历史
 
-### v0.1.0 (当前)
+### v0.2.0 (当前)
+
+**订阅事务层：**
+- ✓ TUI 内新增 / 删除 / 编辑订阅（进度对话框 + 失败自动回滚）
+- ✓ `src/config/` 五模块（清单 / 骨架 / 管理器 / 服务 / 编排）
+- ✓ 配置备份保留 7 天
+- ✓ 只读验收与真实内核冒烟脚本
+
+**测试体系：**
+- ✓ vitest 176+ 用例（REST 客户端假内核 / WebSocket 状态机 / 事务回滚 / 无头 TUI）
+- ✓ `src/config/` 语句覆盖率 94%+
+- ✓ CI 增加 test 步骤；测试生产路径防护网
+
+### v0.1.0
 
 **核心功能：**
 - ✓ TUI 四标签页（节点 / 订阅 / 日志 / 连接）
@@ -736,9 +829,9 @@ chore: 构建/工具链变更
 - ✓ WebSocket 连接复用
 
 **安全机制：**
-- ✓ 运行时代码绝不写 `config.yaml`
-- ✓ 配置迁移强制备份 + 校验
+- ✓ 写 `config.yaml` 收敛为唯一的 `ConfigManager` 事务流程（备份/校验/原子写/回滚）
 - ✓ API 调用错误处理
+- ✓ 订阅 URL 全链路脱敏
 
 ## 许可证
 
@@ -750,4 +843,4 @@ MIT
 
 ---
 
-**更新时间：** 2026-08-17
+**更新时间：** 2026-09-13
