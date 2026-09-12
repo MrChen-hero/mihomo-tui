@@ -5,11 +5,39 @@
 
 ## [Unreleased]
 
-### 计划中
+## [0.2.0] - 2026-09-13
 
-- TUI 内订阅生命周期管理（新增 / 删除 / 编辑订阅），设计稿见
-  [`docs/specs/2026-08-17-subscription-management-design.md`](docs/specs/2026-08-17-subscription-management-design.md)
-- 自动化测试（单元测试 + 集成测试）
+### 新增
+
+- **TUI 内订阅生命周期管理**（`docs/specs/2026-08-17-subscription-management-design.md`）：
+  - `a` 新增订阅：名称 / URL / 节点名前缀，逐字段实时校验
+  - `d` 删除订阅：红色确认框列出全部变更，执行后清理 provider 缓存文件
+  - `e` 编辑节点名前缀（名称与 URL 不可改）
+  - 全程进度对话框展示每一步；失败自动回滚并把 `systemctl status`
+    完整输出放进错误框
+- **订阅事务层 `src/config/`**：订阅清单原子写、骨架生成（自迁移脚本迁移）、
+  `ConfigManager`（备份 → 临时目录 `mihomo -t` 校验 → 原子写 → 写后复验 →
+  回滚）、`ServiceManager`（systemd 用户服务操作）、订阅增删改编排
+  （清单 + 配置 + 服务三者同进同退）；配置备份保留 7 天
+- **自动化测试体系**：vitest，176 个用例覆盖 REST 客户端（本地假内核）、
+  WebSocket 状态机、订阅清单/骨架/管理器、订阅事务逐阶段回滚、TUI 对话框
+  （无头渲染 + 按键注入）；`src/config/` 语句覆盖率 94%+；CI 增加 test 步骤
+- **只读验收入口** `scripts/generate-config.mjs`：对真实配置执行
+  「读订阅 → 生成骨架 → `mihomo -t` 校验」，不写任何文件
+- **真实内核冒烟脚本** `scripts/smoke-subscription.mjs`：前置快照后用测试
+  订阅走完整增删链路，失败自动恢复（手动执行）
+
+### 变更
+
+- `redactUrl` 从 `commands/output.ts` 迁至 `config/subscriptions.ts`
+  （原导出保留）；订阅 URL 的 token 在所有错误信息中不再出现
+- 安全边界表述更新：写 `config.yaml` 的代码路径收敛为唯一的 `ConfigManager`，
+  强制备份/校验/原子写/回滚流程
+
+### 安全
+
+- 测试套件全局禁止写入真实的 `~/.config/mihomo{,-tui}` 目录
+  （`vitest.setup.ts` 防护网）
 
 ## [0.1.0] - 2026-08-17
 

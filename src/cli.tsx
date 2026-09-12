@@ -4,6 +4,7 @@
  * 所有子命令共享同一份 ~/.config/mihomo-tui/config.json，并支持 --json。
  */
 import { Command, CommanderError } from 'commander'
+import { readFileSync } from 'node:fs'
 import { MihomoClient } from './api/client.js'
 import { loadConfig } from './config.js'
 import { runStatus } from './commands/status.js'
@@ -13,12 +14,19 @@ import { runConnClose, runConnLs, runReload } from './commands/conn.js'
 import { runLogs } from './commands/logs.js'
 import { EXIT, exitAfterFlush, reportError } from './commands/output.js'
 
+/** 版本号以 package.json 为唯一来源（编译后与源码模式都指向项目根） */
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
+
 const program = new Command()
 
 program
   .name('mihomo-tui')
-  .description('mihomo 内核的 CLI + TUI 管理工具（只通过 REST API 操作，不写 config.yaml）')
-  .version('0.1.0', '-V, --version', '显示本工具版本')
+  .description('mihomo 内核的 CLI + TUI 管理工具（API 驱动，写配置仅限带备份与回滚的事务层）')
+  .version(VERSION, '-V, --version', '显示本工具版本')
   .option('--api <url>', '覆盖控制口地址，默认取配置文件中的 api')
   .option('--secret <token>', '覆盖控制口密钥')
   .showHelpAfterError('（用 --help 查看用法）')
