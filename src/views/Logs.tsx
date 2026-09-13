@@ -2,7 +2,8 @@
 import { useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
-import { colors } from '../ui/theme.js'
+import { Panel } from '../ui/Panel.js'
+import { colors, styles } from '../ui/theme.js'
 import { useKeyCapture } from '../ui/keyCapture.js'
 import type { LogLevel } from '../api/types.js'
 import type { UseLogStreamResult } from '../hooks/useStream.js'
@@ -104,25 +105,27 @@ export function LogsView({
     { isActive: active },
   )
 
-  const listHeight = Math.max(3, height - 3)
+  // Panel 顶线/底边 + 状态行各占 1 行（对齐订阅页设计，spec 2026-09-13 §2.4）
+  const listHeight = Math.max(3, height - 5)
   // 只渲染尾部可见部分，几百行日志全画会拖慢终端
   const visible = entries.slice(-listHeight)
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Text bold>
-        <Text underline>{`日志 [${level}]`}</Text>
-        {logs.paused ? <Text color={colors.warning}> ⏸ 已暂停</Text> : null}
-        {filter || editing ? (
-          <Text color={colors.info}>{` /${filter}${editing ? '▏' : ''}`}</Text>
-        ) : null}
-        <Text dimColor>{`  缓冲 ${logs.bufferSize}/1000`}</Text>
-        {logs.dropped > 0 ? (
-          <Text dimColor>{`（已滚过 ${logs.dropped} 行）`}</Text>
-        ) : null}
-        {logs.state !== 'open' ? <Text color={colors.warning}>{`  ${logs.state}`}</Text> : null}
-      </Text>
-      <Box flexDirection="column" flexGrow={1}>
+      {/* row 容器让纵轴变交叉轴（默认 stretch）拉伸 Panel——column 直下
+        内层 flexGrow 是空操作（Proxies 窄屏同款机制） */}
+      <Box flexDirection="row" flexGrow={1}>
+      <Panel title={`日志 · ${level}`} fillHeight width={width}>
+        <Text {...styles.tableHeader}>
+          {logs.paused ? <Text color={colors.warning}>{'⏸ 已暂停（Space 继续） · '}</Text> : null}
+          {filter || editing ? (
+            <Text color={colors.info}>{`过滤 /${filter}${editing ? '▏' : ''} · `}</Text>
+          ) : null}
+          <Text dimColor>{`缓冲 ${logs.bufferSize}/1000`}</Text>
+          {logs.dropped > 0 ? <Text dimColor>{` · 已滚过 ${logs.dropped} 行`}</Text> : null}
+          {logs.state !== 'open' ? <Text color={colors.warning}>{` · ${logs.state}`}</Text> : null}
+        </Text>
+        <Box flexDirection="column" flexGrow={1}>
         {visible.length === 0 ? (
           <Text dimColor>
             {filter ? '无匹配日志' : '等待日志…（内核空闲时不产生日志，可先制造一些流量）'}
@@ -145,6 +148,8 @@ export function LogsView({
             )
           })
         )}
+      </Box>
+      </Panel>
       </Box>
       <Box paddingLeft={1}>
         <FooterLine hints={HINTS} width={width - 2} />

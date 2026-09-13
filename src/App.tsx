@@ -105,6 +105,15 @@ export function App({ config, version, mode }: AppProps) {
       setTab((t) => (t + 1) % TABS.length)
       return
     }
+    // [ 向左切一个标签、] 向右切（循环式，与 Tab 同语义；TUI 惯例键位）
+    if (input === '[') {
+      setTab((t) => (t + TABS.length - 1) % TABS.length)
+      return
+    }
+    if (input === ']') {
+      setTab((t) => (t + 1) % TABS.length)
+      return
+    }
     if (key.escape) {
       // 分级退出：主界面 ESC 不再直接退，先弹退出确认（Enter 才真退）
       setConfirmExit(true)
@@ -164,7 +173,7 @@ export function App({ config, version, mode }: AppProps) {
         ) : (
           <FooterLine
             hints={[
-              { key: 'Tab', label: '循环' },
+              { key: 'Tab/[]', label: '循环' },
               { key: 'M', label: '切换模式' },
               { key: 'ESC', label: '退出' },
             ]}

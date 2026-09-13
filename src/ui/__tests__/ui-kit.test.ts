@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { colors, styles, toneColor } from '../theme.js'
 import { MIN_PANEL_WIDTH, panelTopLine, panelTopParts } from '../Panel.js'
 import { fitFooterHints, footerWidth, type FooterHint } from '../FooterLine.js'
-import { statusText, tabRowText, topBarGap } from '../TopBar.js'
+import { statusText, tabCells, tabRowText, topBarGap } from '../TopBar.js'
 import { displayWidth } from '../../commands/output.js'
 
 describe('theme 终端绿配色', () => {
@@ -72,6 +72,40 @@ describe('panelTopLine 内嵌标题边框行', () => {
   it('极窄宽度不产生负重复，返回合法字符串', () => {
     expect(panelTopLine('x', 2)).toBe('╭╮')
     expect(typeof panelTopLine('x', 1)).toBe('string')
+  })
+})
+
+describe('tabCells 标签均布', () => {
+  const TABS = ['节点', '订阅', '日志', '连接']
+
+  it('均分格宽且标签在格内居中', () => {
+    const cells = tabCells(TABS, 0, 100)
+    expect(cells).not.toBeNull()
+    for (const c of cells!) expect(displayWidth(c.text)).toBe(25)
+    // 选中格标签 '❯ 1 节点' 显示宽 8，pad 17，左 8 右 9
+    expect(cells![0]!.text.startsWith(' '.repeat(8) + '❯ 1 节点')).toBe(true)
+    expect(cells![0]!.text.endsWith(' '.repeat(9))).toBe(true)
+    expect(cells![0]!.active).toBe(true)
+    expect(cells![1]!.active).toBe(false)
+  })
+
+  it('标签数量增减自适应格宽（3 个与 5 个）', () => {
+    const three = tabCells(TABS.slice(0, 3), 1, 90)
+    expect(three).not.toBeNull()
+    for (const c of three!) expect(displayWidth(c.text)).toBe(30)
+    // 未来顶栏加标签：5 个标签在 100 列自动重算为 20 列格宽
+    const five = tabCells([...TABS, '设置'], 4, 100)
+    expect(five).not.toBeNull()
+    for (const c of five!) expect(displayWidth(c.text)).toBe(20)
+  })
+
+  it('格宽装不下最宽标签时返回 null（回退紧凑布局）', () => {
+    // '❯ 1 节点' 显示宽 8，均分后格宽 2 → 回退
+    expect(tabCells(TABS, 0, 8)).toBeNull()
+  })
+
+  it('空标签表返回 null（守卫除零，走紧凑回退）', () => {
+    expect(tabCells([], 0, 100)).toBeNull()
   })
 })
 

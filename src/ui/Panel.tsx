@@ -44,10 +44,12 @@ export interface PanelProps {
   width: number
   /** danger：边框与标题转正红并加 ⚠ 前缀（错误盒语义） */
   danger?: boolean
+  /** fillHeight：内层边框盒纵向撑满父容器（双栏并排时底边齐平用） */
+  fillHeight?: boolean
   children: ReactNode
 }
 
-export function Panel({ title, width, danger, children }: PanelProps) {
+export function Panel({ title, width, danger, fillHeight, children }: PanelProps) {
   // danger：边框与标题转正红并加 ⚠ 前缀（错误盒语义）；普通态维持 accent 标题
   const titleStyle = danger ? { color: colors.danger, bold: true } : styles.panelTitle
   const shownTitle = danger ? `⚠ ${title}` : title
@@ -75,6 +77,7 @@ export function Panel({ title, width, danger, children }: PanelProps) {
         borderTop={false}
         borderColor={danger ? colors.danger : colors.surfaceBorder}
         paddingX={1}
+        flexGrow={fillHeight ? 1 : undefined}
       >
         {children}
       </Box>

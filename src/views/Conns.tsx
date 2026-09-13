@@ -115,12 +115,16 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
     { isActive: active },
   )
 
-  const listHeight = Math.max(3, height - 4)
+  // Panel 顶线/底边 + 状态行各占 1 行（对齐订阅页设计，spec 2026-09-13 §2.4）
+  const listHeight = Math.max(3, height - 6)
   const narrow = width < 100
   const hostWidth = narrow ? Math.max(18, width - 34) : Math.max(24, Math.floor(width * 0.32))
 
   return (
     <Box flexDirection="column" flexGrow={1}>
+      {/* row 容器让纵轴变交叉轴拉伸 Panel（Proxies 同款机制） */}
+      <Box flexDirection="row" flexGrow={1}>
+      <Panel title={`连接 · ${conns.length}`} fillHeight width={width}>
       <Text {...styles.tableHeader}>
         {' '}
         {padDisplay('HOST', hostWidth - 1)}
@@ -148,6 +152,8 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
           </Text>
         )}
       />
+      </Panel>
+      </Box>
 
       {confirmAll ? (
         <Panel danger title={`确认关闭全部 ${conns.length} 条连接？`} width={width}>

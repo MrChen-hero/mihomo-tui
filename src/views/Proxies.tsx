@@ -247,7 +247,7 @@ export function ProxiesView({
   const title = truncateDisplay(rawTitle, Math.max(1, nodePanelWidth - 9))
 
   const groupPanel = (
-    <Panel title="代理组" width={groupPanelWidth}>
+    <Panel title="代理组" width={groupPanelWidth} fillHeight>
       <ScrollList
         items={visibleGroups}
         selected={groupIndex}
@@ -272,7 +272,7 @@ export function ProxiesView({
   )
 
   const nodePanel = (
-    <Panel title={title} width={nodePanelWidth}>
+    <Panel title={title} width={nodePanelWidth} fillHeight>
       <ScrollList
         items={nodes}
         selected={nodeIndex}
@@ -295,8 +295,12 @@ export function ProxiesView({
   return (
     <Box flexDirection="column" flexGrow={1}>
       {narrow ? (
-        // 窄终端降级为单栏：只显示当前焦点面板，不做横向截断
-        focus === 'groups' ? groupPanel : nodePanel
+        // 窄终端降级为单栏：只显示当前焦点面板，不做横向截断。
+        // row 容器让纵轴变交叉轴（默认 stretch）拉伸 Panel 外层盒，
+        // 内层 flexGrow 才有空间可分——直接挂在 column 下是空操作
+        <Box flexDirection="row" flexGrow={1}>
+          {focus === 'groups' ? groupPanel : nodePanel}
+        </Box>
       ) : (
         <Box flexDirection="row" flexGrow={1}>
           {groupPanel}
