@@ -144,9 +144,6 @@ export function App({ config, version, mode }: AppProps) {
 
   // 布局预算：顶栏卡片 3（标题线+内容+底边）+ 键提示/消息共用 1 + 状态栏 2
   const bodyHeight = Math.max(6, size.rows - 6)
-  // 确认框为 in-flow 插入（约 5 行），确认期间同步压缩视图高度，
-  // 否则逻辑帧超高会把 TopBar 滚出屏顶
-  const viewHeight = confirmExit ? Math.max(6, bodyHeight - 5) : bodyHeight
   const disconnected = status.state === 'closed' || status.state === 'reconnecting'
   // 连接中视同已连接（沿用既有行为；真正的断开/重连才降级）
   const shownState = disconnected ? status.state : 'open'
@@ -184,14 +181,28 @@ export function App({ config, version, mode }: AppProps) {
         </Panel>
       ) : null}
 
-      <Box flexDirection="column" flexGrow={1} height={viewHeight}>
+      {confirmExit ? (
+        // 退出确认居中独占 body（对齐 cc-switch 确认卡片语言：居中窄卡、
+        // 取消在前）——模态期间页面内容隐藏，按键由 ConfirmDialog 独占
+        <Box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
+          <ConfirmDialog
+            title="退出 mihomo-tui"
+            message={['确认退出？内核服务不受影响，仍在后台运行']}
+            enterConfirms
+            width={Math.min(56, size.columns - 4)}
+            onConfirm={exit}
+            onCancel={() => setConfirmExit(false)}
+          />
+        </Box>
+      ) : (
+        <Box flexDirection="column" flexGrow={1} height={bodyHeight}>
         {tab === 0 ? (
           <ProxiesView
             proxies={proxies}
-            height={viewHeight}
+            height={bodyHeight}
             width={size.columns}
             tick={tick}
-            active={tab === 0 && !confirmExit}
+            active={tab === 0}
             onMessage={setMessage}
           />
         ) : null}
@@ -200,10 +211,10 @@ export function App({ config, version, mode }: AppProps) {
             providers={providers}
             config={config}
             onChanged={() => proxies.refresh()}
-            height={viewHeight}
+            height={bodyHeight}
             width={size.columns}
             tick={tick}
-            active={tab === 1 && !confirmExit}
+            active={tab === 1}
             onMessage={setMessage}
           />
         ) : null}
@@ -212,9 +223,9 @@ export function App({ config, version, mode }: AppProps) {
             logs={logs}
             level={logLevel}
             onLevelChange={setLogLevel}
-            height={viewHeight}
+            height={bodyHeight}
             width={size.columns}
-            active={tab === 2 && !confirmExit}
+            active={tab === 2}
             onMessage={setMessage}
           />
         ) : null}
@@ -222,23 +233,14 @@ export function App({ config, version, mode }: AppProps) {
           <ConnsView
             config={config}
             data={connections.data}
-            height={viewHeight}
+            height={bodyHeight}
             width={size.columns}
-            active={tab === 3 && !confirmExit}
+            active={tab === 3}
             onMessage={setMessage}
           />
         ) : null}
       </Box>
-
-      {confirmExit ? (
-        <ConfirmDialog
-          title="退出 mihomo-tui"
-          message={['确认退出？内核服务不受影响，仍在后台运行']}
-          enterConfirms
-          onConfirm={exit}
-          onCancel={() => setConfirmExit(false)}
-        />
-      ) : null}
+      )}
 
       <StatusBar
         version={version}

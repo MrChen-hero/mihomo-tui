@@ -68,9 +68,9 @@ export function useKeyCapture(active: boolean): void  // effect 增删登记
 - `const [confirmExit, setConfirmExit] = useState(false)`
 - 全局 handler 的 ESC 分支：`keysCaptured()` 已被上面拦掉；`confirmExit` 开着时本分支不再触发（见下）——故 ESC 在此直接 `setConfirmExit(true)`
 - `confirmExit` 开着时按键全部由 ConfirmDialog 消费（Enter/y 确认、ESC/n 取消、其余忽略）；App 全局 handler 靠闸门让路，视图靠 active 停摆
-- 四个视图的 `active` 收紧为 `tab === n && !confirmExit`（视图内 useInput 全部停摆）
-- 渲染：`confirmExit && <ConfirmDialog title="退出 mihomo-tui" message={['确认退出？内核服务不受影响，仍在后台运行']} enterConfirms onConfirm={exit} onCancel={() => setConfirmExit(false)} danger={false} />`（按键全部由 ConfirmDialog 消费——它挂载即登记，App 闸门自动让路；App handler 不重复处理 Enter/ESC）
-- 确认框为 in-flow 插入（约 5 行）：确认期间四视图传 `bodyHeight - 5`，避免逻辑帧超高把 TopBar 滚出屏顶
+- 确认期间 body 模态独占（视图卸载 → useInput 随之停摆）；**已知取舍**：取消确认后视图本地状态（Proxies 光标/排序、Logs 过滤词、Providers 展开项等）会重置——模态独占换取确认框双轴居中，状态上提留作后续优化
+- 渲染：`confirmExit && <ConfirmDialog title="退出 mihomo-tui" message={['确认退出？内核服务不受影响，仍在后台运行']} enterConfirms width={min(56, columns-4)} ... danger={false} />`（按键全部由 ConfirmDialog 消费——它挂载即登记，App 闸门自动让路；App handler 不重复处理 Enter/ESC）
+- 确认框**居中独占 body**（后续打磨，对齐 cc-switch 确认卡片语言：双轴居中窄卡、取消在前）：confirmExit 时模态替代页面内容，宽 `min(56, columns-4)` 窄终端自适应
 
 ### 5.3 InputDialog 美化（居中窄卡片）
 
