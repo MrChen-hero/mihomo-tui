@@ -10,6 +10,7 @@ import { ApiBusinessError, MihomoClient } from '../api/client.js'
 import { classify, type NodeStatus } from '../api/status.js'
 import type { ProxyItem } from '../api/types.js'
 import type { AppConfig } from '../config.js'
+import { AIRPORT_GROUP_PREFIX } from '../config/skeleton.js'
 
 export interface NodeRow {
   name: string
@@ -61,6 +62,16 @@ export interface UseProxiesResult {
  * 否则像 AI 这种成员全是组 + 一个 DIRECT 的聚合组会被误判为节点组。
  */
 const BUILTIN_OUTBOUNDS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE'])
+
+/**
+ * [1] 节点页可见的组：AUTO 与全部机场组。
+ * 机场组由 skeleton 按「机场-<订阅名>」生成，按前缀动态识别 ——
+ * 新增/删除订阅后内核里的组列表变化，这里无需改动即自动同步
+ * （不能回到写死订阅名的白名单，那样新订阅的组永远进不了 [1]）。
+ */
+export function isPrimaryGroupName(name: string): boolean {
+  return name === 'AUTO' || name.startsWith(AIRPORT_GROUP_PREFIX)
+}
 
 export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResult {
   const client = useMemo(() => new MihomoClient(config), [config])
@@ -118,12 +129,11 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
   )
 
   const groups = useMemo(() => {
-    // 只显示 AUTO 和三个机场分组
-    const ALLOWED = new Set(['AUTO', '机场-jkun', '机场-liangxin', '机场-yuetoto'])
+    // 只显示 AUTO 与全部机场组（机场-<订阅名>，随订阅增删动态变化）
     const rows: GroupRow[] = []
     for (const item of Object.values(proxies)) {
       if (!Array.isArray(item.all)) continue
-      if (!ALLOWED.has(item.name)) continue
+      if (!isPrimaryGroupName(item.name)) continue
       const members = item.all
       // 真实节点 = 既不是组、也不是 DIRECT/REJECT 这类内置出口
       const realNodes = members.filter(

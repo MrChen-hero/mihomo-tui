@@ -172,6 +172,7 @@ export function App({ config, version, mode, port }: AppProps) {
           <ProvidersView
             providers={providers}
             config={config}
+            onChanged={() => proxies.refresh()}
             height={bodyHeight}
             width={size.columns}
             tick={tick}

@@ -1,7 +1,8 @@
 /**
  * 标签页 1：节点。
  *
- * 按用户要求只显示 AUTO 和三个机场分组，每个分组显示当前真正在用的节点。
+ * 只显示 AUTO 和全部机场分组（机场- 前缀，随订阅增删动态变化），
+ * 每个分组显示当前真正在用的节点。
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
@@ -36,7 +37,7 @@ export function ProxiesView({
   // 默认按延迟排序：可用节点浮到顶部，直接对应「保证节点可用」的诉求
   const [sortByDelay, setSortByDelay] = useState(true)
 
-  // 只显示 AUTO 和三个机场分组
+  // 只显示 AUTO 与全部机场组（机场- 前缀，动态跟随订阅增删）
   const visibleGroups = proxies.groups
 
   const currentGroup: GroupRow | undefined = visibleGroups[Math.min(groupIndex, visibleGroups.length - 1)]

@@ -11,6 +11,9 @@ import type { ParsedYaml, RegionDef, SkeletonOptions, Subscription } from './typ
 export const EXCLUDE_FILTER =
   '(?i)(剩余|到期|官网|流量|套餐|重置|过期|群组|订阅|邀请|客服|网址|建议|丢失|重置)'
 
+/** 单机场组统一用「机场-<订阅名>」命名；[1] 节点页按该前缀动态识别机场组 */
+export const AIRPORT_GROUP_PREFIX = '机场-'
+
 export const TEST_URL = 'https://www.gstatic.com/generate_204'
 
 /**
@@ -125,7 +128,7 @@ export function buildGroups(
   testUrl: string = TEST_URL,
 ): Record<string, unknown>[] {
   const regionNames = regions.map((region) => region.name)
-  const airportNames = subs.map((sub) => `机场-${sub.name}`)
+  const airportNames = subs.map((sub) => `${AIRPORT_GROUP_PREFIX}${sub.name}`)
 
   // 主组：手动选择，成员为自动组 + 区域组 + 机场组 + DIRECT
   const main = {
@@ -175,7 +178,7 @@ export function buildGroups(
 
   // 单机场组：按机场分别列出，便于定位某家机场的问题
   const airports = subs.map((sub) => ({
-    name: `机场-${sub.name}`,
+    name: `${AIRPORT_GROUP_PREFIX}${sub.name}`,
     type: 'select',
     use: [sub.name],
   }))

@@ -32,6 +32,8 @@ export interface ProvidersViewProps {
   onMessage: (text: string) => void
   /** 应用配置（mihomoDir 在 v0.2.0 起是关键配置） */
   config: AppConfig
+  /** 订阅增删改事务成功后回调（App 用它触发节点页立即刷新，不等轮询） */
+  onChanged?: () => void
   /** 测试注入用；缺省时由 config 构造（真实 ConfigManager/ServiceManager） */
   serviceDeps?: ServiceDeps
 }
@@ -58,6 +60,7 @@ export function ProvidersView({
   active,
   onMessage,
   config,
+  onChanged,
   serviceDeps,
 }: ProvidersViewProps) {
   const [index, setIndex] = useState(0)
@@ -108,6 +111,8 @@ export function ProvidersView({
       })
       setDialog({ type: 'none' })
       providers.refresh()
+      // 配置与内核已随事务重启变化，让节点页也立即重拉（组列表增删）
+      onChanged?.()
       if (message) onMessage(message)
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err)

@@ -114,10 +114,13 @@ interface Fixture {
   deps: ServiceDeps
   messages: string[]
   terminal: Terminal
+  /** 传给视图的 onChanged 回调（订阅事务成功后应被触发） */
+  onChanged: ReturnType<typeof vi.fn>
 }
 
 function mountView(options: { afterRestart?: string; rows?: Partial<ProviderRow>[] } = {}): Fixture {
   const messages: string[] = []
+  const onChanged = vi.fn()
   const deps: ServiceDeps = {
     manager: new ConfigManager(mihomoDir, stubMihomo()),
     service: new ServiceManager('mihomo', stubSystemctl(options)),
@@ -142,18 +145,19 @@ function mountView(options: { afterRestart?: string; rows?: Partial<ProviderRow>
     active: true,
     onMessage: (text) => messages.push(text),
     config,
+    onChanged,
     serviceDeps: deps,
   }
   const terminal = createTerminal(<ProvidersView {...props} />)
   terminals.push(terminal)
-  return { props, deps, messages, terminal }
+  return { props, deps, messages, terminal, onChanged }
 }
 
 const frames = (terminal: Terminal): string => textOf(terminal.frames())
 
 describe('订阅流程（视图层集成）', () => {
   it('a 打开添加对话框，提交后订阅清单与配置同步更新', async () => {
-    const { terminal, messages } = mountView()
+    const { terminal, messages, onChanged } = mountView()
     await delay(60)
     terminal.press('a')
     await delay(60)
@@ -174,10 +178,12 @@ describe('订阅流程（视图层集成）', () => {
     expect(subs).toEqual(['alpha', 'beta', 'gamma'])
     const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
     expect(config['proxy-providers']?.gamma?.url).toBe('https://gamma.example/sub?token=cccc')
+    // 事务成功后通知上层（节点页立即刷新）
+    expect(onChanged).toHaveBeenCalled()
   })
 
   it('ESC 取消添加对话框，不产生任何改动', async () => {
-    const { terminal } = mountView()
+    const { terminal, onChanged } = mountView()
     await delay(60)
     terminal.press('a')
     await delay(60)
@@ -186,10 +192,11 @@ describe('订阅流程（视图层集成）', () => {
     const before = readFileSync(subsPath, 'utf8')
     await delay(120)
     expect(readFileSync(subsPath, 'utf8')).toBe(before)
+    expect(onChanged).not.toHaveBeenCalled()
   })
 
   it('d 打开确认框：y 执行删除（清单+配置+缓存），n 取消', async () => {
-    const { terminal, messages } = mountView()
+    const { terminal, messages, onChanged } = mountView()
     await delay(60)
     terminal.press('d') // 当前选中 alpha（排序第一）
     await delay(60)
@@ -212,10 +219,11 @@ describe('订阅流程（视图层集成）', () => {
     expect(subs).toEqual(['beta'])
     expect(existsSync(join(mihomoDir, 'providers', 'alpha.yaml'))).toBe(false)
     expect(existsSync(join(mihomoDir, 'providers', 'beta.yaml'))).toBe(true)
+    expect(onChanged).toHaveBeenCalled()
   })
 
   it('e 编辑前缀：名称只读，前缀写入配置', async () => {
-    const { terminal, messages } = mountView()
+    const { terminal, messages, onChanged } = mountView()
     await delay(60)
     terminal.press('e') // 编辑 alpha（当前无前缀）
     await delay(60)
@@ -231,6 +239,7 @@ describe('订阅流程（视图层集成）', () => {
     })
     const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
     expect(config['proxy-providers']?.alpha?.override?.['additional-prefix']).toBe('[A] ')
+    expect(onChanged).toHaveBeenCalled()
   })
 
   it('服务起不来：错误对话框展示完整回滚信息，任意键关闭', async () => {
