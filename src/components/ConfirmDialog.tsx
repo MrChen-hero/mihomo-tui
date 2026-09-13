@@ -45,7 +45,8 @@ export function ConfirmDialog({
       borderStyle="round"
       borderColor={danger ? colors.danger : colors.accent}
       paddingX={1}
-      paddingY={2}
+      paddingTop={1}
+      paddingBottom={2}
       width={width}
     >
       {/* 键帽行：中性 inverse 块（不引入色相），块间两空格正常底色 */}

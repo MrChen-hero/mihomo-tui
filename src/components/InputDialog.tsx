@@ -335,7 +335,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     const starSuffix = field.required && parts.title.endsWith(' *')
     const labelShown = starSuffix ? parts.title.replace(/ \*$/, '') : parts.title
     return (
-      <Box key={field.key} flexDirection="column" marginTop={index > 0 ? 1 : undefined} width={slotWidth}>
+      <Box key={field.key} flexDirection="column" marginTop={1} width={slotWidth}>
         {slotWidth < MIN_PANEL_WIDTH ? (
           <>
             <Text {...labelStyle}>{fullTitle}</Text>
