@@ -198,7 +198,7 @@ export function App({ config, version, mode }: AppProps) {
             borderTitle="退出"
             message={['确认退出？', '内核服务不受影响，仍在后台运行']}
             enterConfirms
-            width={Math.min(56, size.columns - 4)}
+            width={Math.min(44, size.columns - 4)}
             onConfirm={exit}
             onCancel={() => setConfirmExit(false)}
           />

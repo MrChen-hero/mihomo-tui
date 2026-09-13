@@ -65,7 +65,7 @@ export function ConfirmDialog({
         borderColor={borderColor}
         paddingX={1}
         paddingTop={parts ? 0 : 1}
-        paddingBottom={parts ? 3 : 2}
+        paddingBottom={parts ? 1 : 2}
       >
         {/* 键帽行：中性 inverse 块（不引入色相），块间两空格正常底色 */}
         <Text>
