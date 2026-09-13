@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   InputDialog,
   allErrors,
+  inputWindow,
   isFormValid,
+  sanitizeInput,
   validateField,
   type InputField,
 } from '../InputDialog.js'
@@ -14,13 +16,22 @@ import {
 } from '../ProgressDialog.js'
 import { createTerminal, delay, textOf } from './harness.js'
 
-// 键位原始字节：ESC / TAB / 回车 / 退格 / 上下箭头
+// 键位原始字节：ESC / TAB / 回车 / 退格 / 上下箭头 / Home / End
 const ESC = '\x1B'
 const TAB = '\t'
 const RETURN = '\r'
 const BACKSPACE = '\u007F'
 const UP = '\x1B[A'
 const DOWN = '\x1B[B'
+const LEFT = '\x1B[D'
+const HOME = '\x1B[H'
+const END = '\x1B[F'
+const CTRL_A = '\u0001'
+const CTRL_E = '\u0005'
+const CTRL_U = '\u0015'
+const CTRL_W = '\u0017'
+// bracketed paste 标记包裹的整串粘贴
+const pasteChunk = (text: string): string => `\x1B[200~${text}\x1B[201~`
 
 const rendered: { cleanup: () => void }[] = []
 afterEach(() => {
@@ -58,6 +69,42 @@ describe('InputDialog 纯逻辑', () => {
     expect(isFormValid(fields, { name: 'alpha', url: 'https://x' })).toBe(true)
     expect(isFormValid(fields, { name: 'alpha', url: '' })).toBe(false)
   })
+
+  it('sanitizeInput 剥离控制字符，保留可打印与中文/emoji', () => {
+    expect(sanitizeInput('https://a.com/sub\n\ttoken=1')).toBe('https://a.com/subtoken=1')
+    expect(sanitizeInput('前缀 🇭🇰')).toBe('前缀 🇭🇰')
+    expect(sanitizeInput('a\u007fb')).toBe('ab')
+  })
+
+  it('inputWindow：短值原样返回、光标偏移正确', () => {
+    expect(inputWindow('abc', 1, 10)).toEqual({ text: 'abc', cursorOffset: 1 })
+    // 光标在末尾（虚拟空位）
+    expect(inputWindow('abc', 3, 10)).toEqual({ text: 'abc', cursorOffset: 3 })
+  })
+
+  it('inputWindow：超长值开窗后光标始终可见，两侧以 … 标记', () => {
+    const url = 'https://example.com/very/long/subscription/path?token=abcdef'
+    const max = 20
+    // 光标在末尾：末尾可见
+    const tail = inputWindow(url, url.length, max)
+    expect(tail.text.endsWith('abcdef')).toBe(true)
+    expect(tail.text.startsWith('…')).toBe(true)
+    expect([...tail.text].reduce((sum, ch) => sum + 1, 0)).toBeLessThanOrEqual(max)
+    // 把光标移回行首：开头可见
+    const head = inputWindow(url, 0, max)
+    expect(head.text.startsWith('https://')).toBe(true)
+    expect(head.text.endsWith('…')).toBe(true)
+  })
+
+  it('inputWindow：按显示宽度开窗，中文不会被切成两列', () => {
+    const value = '一二三四五六七八九十'
+    const max = 8
+    const result = inputWindow(value, 5, max) // 光标在「六」前
+    expect(result.text).toContain('六')
+    // 窗口文本的显示宽度不超过 max（不含指示符单独计算时的边界抖动）
+    const width = [...result.text].reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0)
+    expect(width).toBeLessThanOrEqual(max + 2)
+  })
 })
 
 describe('InputDialog 渲染与交互', () => {
@@ -78,7 +125,10 @@ describe('InputDialog 渲染与交互', () => {
     expect(text).toContain('添加订阅')
     expect(text).toContain('订阅名称')
     expect(text).toContain('<my-airport>')
-    expect(text).toContain('ESC 取消')
+    expect(text).toContain('Esc 取消')
+    // cc-switch 风格：激活字段有 ❯ 标记与编辑提示行
+    expect(text).toContain('❯ 订阅名称')
+    expect(text).toContain('支持粘贴')
   })
 
   it('键入追加到当前字段；secret 字段以 * 回显', async () => {
@@ -98,21 +148,156 @@ describe('InputDialog 渲染与交互', () => {
     expect(text).not.toContain('abc')
   })
 
-  it('退格删除最后一个字符', async () => {
+  it('退格删除光标前一个字符', async () => {
+    const onSubmit = vi.fn()
     const terminal = mount(
       <InputDialog
         title="添加订阅"
         fields={[{ label: '订阅名称', key: 'name' }]}
-        onSubmit={() => {}}
+        onSubmit={onSubmit}
         onCancel={() => {}}
       />,
     )
     await delay()
     terminal.press('a')
     terminal.press('b')
-    terminal.press(BACKSPACE)
+    terminal.press(BACKSPACE) // "ab" → "a"，光标在末尾
+    terminal.press(RETURN)
     await delay()
-    expect(textOf(terminal.frames())).toContain('：a')
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'a' })
+  })
+
+  it('整串粘贴（bracketed paste）插入当前字段，换行被剥离', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅 URL', key: 'url', required: true }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    terminal.press(pasteChunk('https://example.com/sub?token=xyz'))
+    await delay()
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ url: 'https://example.com/sub?token=xyz' })
+  })
+
+  it('多行粘贴只保留可打印内容（换行/制表剥离）', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅 URL', key: 'url', required: true }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    terminal.press(pasteChunk('https://a.example/\n\tsub?x=1'))
+    await delay()
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ url: 'https://a.example/sub?x=1' })
+  })
+
+  it('兜底：不支持 bracketed paste 的终端整串到达时也能完整插入', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅 URL', key: 'url', required: true }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    terminal.press('https://legacy.example/sub') // 无标记的多字符 chunk
+    await delay()
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ url: 'https://legacy.example/sub' })
+  })
+
+  it('←→ 移动光标后插入落在光标处', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅名称', key: 'name' }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    for (const char of 'abcd') terminal.press(char)
+    terminal.press(LEFT) // 光标到 d 前
+    terminal.press('X') // "abcXd"
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'abcXd' })
+  })
+
+  it('Ctrl+W 向前删一个词', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅名称', key: 'name' }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    for (const char of 'foo bar') terminal.press(char)
+    terminal.press(CTRL_W) // 删 "bar" → "foo "
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'foo ' })
+  })
+
+  it('Ctrl+U 清空整行', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅名称', key: 'name' }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    for (const char of 'junk') terminal.press(char)
+    terminal.press(CTRL_U)
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ name: '' })
+  })
+
+  it('Home/End 与 Ctrl+A/E 把光标移到行首/行尾', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog
+        title="添加订阅"
+        fields={[{ label: '订阅名称', key: 'name' }]}
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    )
+    await delay()
+    for (const char of 'def') terminal.press(char)
+    terminal.press(CTRL_A)
+    terminal.press('a') // 行首插入 → "adef"
+    terminal.press(END)
+    terminal.press('z') // 行尾插入 → "adefz"
+    terminal.press(HOME)
+    terminal.press('0') // "0adefz"
+    terminal.press(CTRL_E)
+    terminal.press(RETURN)
+    await delay()
+    expect(onSubmit).toHaveBeenCalledWith({ name: '0adefz' })
   })
 
   it('回归：同一轮事件里连续按键不丢字（快速打字/整串粘贴场景）', async () => {

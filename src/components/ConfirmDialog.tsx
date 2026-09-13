@@ -41,13 +41,21 @@ export function ConfirmDialog({
       paddingX={1}
       width={width}
     >
-      <Text bold color={danger ? 'red' : undefined}>{` ${title}`}</Text>
+      <Text>
+        <Text bold color={danger ? 'red' : 'cyan'}>{`${danger ? '⚠' : '◆'} `}</Text>
+        <Text bold color={danger ? 'red' : undefined}>{title}</Text>
+      </Text>
       {lines.map((line, index) => (
         <Text key={index} color={danger ? 'red' : undefined}>
           {` ${line}`}
         </Text>
       ))}
-      <Text dimColor>{' y 确认  n/ESC 取消'}</Text>
+      <Text>
+        <Text bold color={danger ? 'red' : 'green'}>{'y'}</Text>
+        <Text dimColor>{' 确认  '}</Text>
+        <Text bold>{'n'}</Text>
+        <Text dimColor>{'/Esc 取消'}</Text>
+      </Text>
     </Box>
   )
 }
