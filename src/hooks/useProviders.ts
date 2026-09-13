@@ -11,6 +11,8 @@ export interface ProviderRow {
   alive: number
   /** 剩余流量字节数；undefined 表示机场未下发 */
   remaining: number | undefined
+  /** 已用/总量；undefined 表示机场未下发总量（无法算使用率） */
+  usage: { used: number; total: number } | undefined
   /** 到期时间戳（毫秒）；undefined 表示长期有效或未下发 */
   expire: number | undefined
   updatedAt: string | undefined
@@ -76,6 +78,7 @@ export function useProviders(config: AppConfig, refreshMs = 8000): UseProvidersR
       const info = provider.subscriptionInfo
       const used = info ? (info.Upload ?? 0) + (info.Download ?? 0) : 0
       rows.push({
+        usage: info?.Total ? { used, total: info.Total } : undefined,
         name,
         type: provider.vehicleType,
         nodes: provider.proxies.length,

@@ -19,6 +19,7 @@
  * 光标与增删一律按码点数组操作，emoji 等代理对不会被 slice 切断。
  */
 import { Box, Text, useInput, usePaste } from 'ink'
+import { colors, styles } from '../ui/theme.js'
 import { useRef, useState, type ReactNode } from 'react'
 import { displayWidth } from '../commands/output.js'
 
@@ -294,7 +295,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     return (
       <Box
         borderStyle="round"
-        borderColor={invalid ? 'red' : 'cyan'}
+        borderColor={invalid ? colors.danger : colors.accent}
         paddingX={1}
         width="100%"
       >
@@ -315,9 +316,9 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={colors.accent} paddingX={1} width={width}>
       <Text>
-        <Text bold color="cyan">{'◆ '}</Text>
+        <Text bold color={colors.accent}>{'◆ '}</Text>
         <Text bold>{title}</Text>
       </Text>
       {fields.map((field, index) => {
@@ -329,7 +330,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
           <Box key={field.key} flexDirection="column">
             {isActive ? (
               <Text>
-                <Text bold color="cyan">{`❯ ${field.label}`}</Text>
+                <Text {...styles.keyCap}>{`❯ ${field.label}`}</Text>
                 {field.readOnly ? <Text dimColor>{'（只读）'}</Text> : null}
               </Text>
             ) : (
@@ -339,18 +340,18 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
             )}
             {renderValue(field, value, isActive)}
             {showError ? (
-              <Text color="red">{`  ⚠ ${error}`}</Text>
+              <Text color={colors.danger}>{`  ⚠ ${error}`}</Text>
             ) : null}
           </Box>
         )
       })}
       <Box marginTop={1} flexDirection="column">
         <Text>
-          <Text bold color="cyan">{'↑↓/Tab'}</Text>
+          <Text {...styles.keyCap}>{'↑↓/Tab'}</Text>
           <Text dimColor>{' 切换  '}</Text>
-          <Text bold color="cyan">{'Enter'}</Text>
+          <Text {...styles.keyCap}>{'Enter'}</Text>
           <Text dimColor>{' 确认  '}</Text>
-          <Text bold color="cyan">{'Esc'}</Text>
+          <Text {...styles.keyCap}>{'Esc'}</Text>
           <Text dimColor>{' 取消'}</Text>
         </Text>
         <Text dimColor>{' 支持粘贴  ←→ 光标  Ctrl+U 清空'}</Text>

@@ -15,13 +15,16 @@ export interface Terminal {
   instance: Instance
 }
 
-export function createTerminal(element: React.ReactElement): Terminal {
+export function createTerminal(
+  element: React.ReactElement,
+  opts: { columns?: number; rows?: number } = {},
+): Terminal {
   const chunks: string[] = []
 
   const stdout = new EventEmitter() as unknown as NodeJS.WriteStream
   const stdoutAny = stdout as unknown as Record<string, unknown>
-  stdoutAny.columns = 80
-  stdoutAny.rows = 24
+  stdoutAny.columns = opts.columns ?? 80
+  stdoutAny.rows = opts.rows ?? 24
   // ink 7 只有在 isTTY 的 stdout 上才走同步渲染路径
   stdoutAny.isTTY = true
   stdoutAny.write = (chunk: Uint8Array | string): boolean => {

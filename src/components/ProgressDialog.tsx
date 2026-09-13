@@ -3,6 +3,7 @@
  * cancelable 时响应 ESC（仅在安全点提供——由调用方决定是否传入 onCancel）。
  */
 import { Box, Text, useInput } from 'ink'
+import { colors } from '../ui/theme.js'
 
 export interface ProgressDialogProps {
   title: string
@@ -19,11 +20,15 @@ export interface ProgressDialogProps {
   width?: number
 }
 
-/** 纯函数：生成固定宽度的进度条，如 [████░░░░░░] */
+/** 纯函数：生成固定宽度的进度条，如 [#####-----]。
+ * 用 ASCII 而非 █░：块元素属 East Asian Ambiguous 宽度，在 ambiguous=wide
+ * 配置的真实终端下按 2 列渲染，一整条 10~20 字符的进度条会把行宽撑出
+ * 面板导致折行（本机 pyte 工具链测不出，属真机终端风险，保守处理）。
+ */
 export function progressBar(fraction: number, width = 20): string {
   const clamped = Math.min(1, Math.max(0, fraction))
   const filled = Math.round(clamped * width)
-  return `[${'█'.repeat(filled)}${'░'.repeat(width - filled)}]`
+  return `[${'#'.repeat(filled)}${'-'.repeat(width - filled)}]`
 }
 
 /** 纯函数：当前进度百分比（0–100），total 为 0 时按完成计 */
@@ -48,12 +53,12 @@ export function ProgressDialog({
 
   const percent = progressPercent(step, total)
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={colors.accent} paddingX={1} width={width}>
       <Text bold>{` ${title}`}</Text>
       <Text>{` [${Math.min(step + 1, total)}/${total}] ${current}`}</Text>
-      <Text color="cyan">{` ${progressBar(percent / 100)} ${percent}%`}</Text>
+      <Text color={colors.accent}>{` ${progressBar(percent / 100)} ${percent}%`}</Text>
       {completed.map((label) => (
-        <Text key={label} color="green">{` ✓ ${label}`}</Text>
+        <Text key={label} color={colors.success}>{` ✓ ${label}`}</Text>
       ))}
       {cancelable ? <Text dimColor>{' ESC 取消'}</Text> : null}
     </Box>

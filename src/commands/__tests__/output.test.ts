@@ -92,8 +92,8 @@ describe('displayWidth CJK 与 emoji 显示宽度', () => {
     expect(displayWidth('👍')).toBe(2)
   })
 
-  it('区域指示符成对合计 2（国旗）', () => {
-    expect(displayWidth('🇨🇳')).toBe(2)
+  it('区域指示符按最坏情况各计 2（国旗合计 4，防终端渲染分歧折行）', () => {
+    expect(displayWidth('🇨🇳')).toBe(4)
   })
 
   it('变体选择符不占宽', () => {

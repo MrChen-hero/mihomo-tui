@@ -36,8 +36,10 @@ export function displayWidth(text: string): number {
   for (const char of text) {
     const code = char.codePointAt(0) ?? 0
     if (code === 0xfe0f || (code >= 0x1f1e6 && code <= 0x1f1ff)) {
-      // 变体选择符不占宽；区域指示符成对组成国旗，单个按 1 计，一对合计 2
-      width += code === 0xfe0f ? 0 : 1
+      // 变体选择符不占宽。区域指示符（国旗的一半）按 2 计：终端对成对 RI
+      // 的渲染宽度有分歧（多数按组合字符 2 列，pyte 等按两个宽字符 4 列）。
+      // 预算取最坏情况——宁可行尾多留白，也不能让整行超宽折行撑爆面板。
+      width += code === 0xfe0f ? 0 : 2
       continue
     }
     width += isWide(code) ? 2 : 1

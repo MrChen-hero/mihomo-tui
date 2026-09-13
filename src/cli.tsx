@@ -188,12 +188,10 @@ program.action(async () => {
   const client = new MihomoClient(config)
   let version: string | undefined
   let mode: 'rule' | 'global' | 'direct' | undefined
-  let port: number | undefined
   try {
     const [v, c] = await Promise.all([client.version(), client.configs()])
     version = v.version
     mode = c.mode
-    port = c['mixed-port']
   } catch (err) {
     reportError(err)
   }
@@ -205,7 +203,7 @@ program.action(async () => {
 
   const { render } = await import('ink')
   const { App } = await import('./App.js')
-  const instance = render(<App config={config} version={version} mode={mode} port={port} />)
+  const instance = render(<App config={config} version={version} mode={mode} />)
   await instance.waitUntilExit()
   // mihomo 不回 WebSocket close 帧，句柄不释放 → 必须显式退出（SPEC 3.6）
   await exitAfterFlush(EXIT.ok)

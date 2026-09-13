@@ -473,11 +473,11 @@ describe('ProgressDialog', () => {
 
 describe('进度条纯函数', () => {
   it('progressBar 按比例填充并可钳制', () => {
-    expect(progressBar(0, 10)).toBe('[░░░░░░░░░░]')
-    expect(progressBar(0.5, 10)).toBe('[█████░░░░░]')
-    expect(progressBar(1, 10)).toBe('[██████████]')
-    expect(progressBar(2, 4)).toBe('[████]')
-    expect(progressBar(-1, 4)).toBe('[░░░░]')
+    expect(progressBar(0, 10)).toBe('[----------]')
+    expect(progressBar(0.5, 10)).toBe('[#####-----]')
+    expect(progressBar(1, 10)).toBe('[##########]')
+    expect(progressBar(2, 4)).toBe('[####]')
+    expect(progressBar(-1, 4)).toBe('[----]')
   })
 
   it('progressPercent 边界', () => {

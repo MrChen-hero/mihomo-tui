@@ -1,6 +1,8 @@
 /** 标签页 3：实时日志 */
 import { useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
+import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
+import { colors } from '../ui/theme.js'
 import type { LogLevel } from '../api/types.js'
 import type { UseLogStreamResult } from '../hooks/useStream.js'
 
@@ -19,14 +21,27 @@ const LEVELS: LogLevel[] = ['error', 'warning', 'info', 'debug']
 function levelColor(type: string): string | undefined {
   switch (type) {
     case 'error':
-      return 'red'
+      return colors.danger
     case 'warning':
-      return 'yellow'
+      return colors.warning
     case 'debug':
-      return 'gray'
+      return colors.muted
     default:
       return undefined
   }
+}
+
+const HINTS: FooterHint[] = [
+  { key: 'l', label: '切级别' },
+  { key: '/', label: '过滤' },
+  { key: 'Space', label: '暂停' },
+  { key: 'c', label: '清屏' },
+]
+
+/** payload 以日期开头时把时间戳段染成暗色，其余维持默认（不可解析就整行原样） */
+function splitTimestamp(payload: string): [string, string] | undefined {
+  const m = /^((?:\d{4}-\d{2}-\d{2})[ T]\S+)\s(.*)$/s.exec(payload)
+  return m ? [m[1] ?? '', m[2] ?? ''] : undefined
 }
 
 export function LogsView({
@@ -94,15 +109,15 @@ export function LogsView({
     <Box flexDirection="column" flexGrow={1}>
       <Text bold>
         <Text underline>{`日志 [${level}]`}</Text>
-        {logs.paused ? <Text color="yellow"> ⏸ 已暂停</Text> : null}
+        {logs.paused ? <Text color={colors.warning}> ⏸ 已暂停</Text> : null}
         {filter || editing ? (
-          <Text color="cyan">{` /${filter}${editing ? '▏' : ''}`}</Text>
+          <Text color={colors.info}>{` /${filter}${editing ? '▏' : ''}`}</Text>
         ) : null}
         <Text dimColor>{`  缓冲 ${logs.bufferSize}/1000`}</Text>
         {logs.dropped > 0 ? (
           <Text dimColor>{`（已滚过 ${logs.dropped} 行）`}</Text>
         ) : null}
-        {logs.state !== 'open' ? <Text color="yellow">{`  ${logs.state}`}</Text> : null}
+        {logs.state !== 'open' ? <Text color={colors.warning}>{`  ${logs.state}`}</Text> : null}
       </Text>
       <Box flexDirection="column" flexGrow={1}>
         {visible.length === 0 ? (
@@ -110,14 +125,27 @@ export function LogsView({
             {filter ? '无匹配日志' : '等待日志…（内核空闲时不产生日志，可先制造一些流量）'}
           </Text>
         ) : (
-          visible.map((entry) => (
-            <Text key={entry.id} color={levelColor(entry.type)} wrap="truncate-end">
-              {`${entry.type.padEnd(7)} ${entry.payload}`}
-            </Text>
-          ))
+          visible.map((entry) => {
+            const ts = splitTimestamp(entry.payload)
+            return (
+              <Text key={entry.id} color={levelColor(entry.type)} wrap="truncate-end">
+                {`${entry.type.padEnd(7)} `}
+                {ts ? (
+                  <>
+                    <Text dimColor>{`${ts[0]} `}</Text>
+                    {ts[1]}
+                  </>
+                ) : (
+                  entry.payload
+                )}
+              </Text>
+            )
+          })
         )}
       </Box>
-      <Text dimColor>{' l 切级别  / 过滤  Space 暂停  c 清屏'}</Text>
+      <Box paddingLeft={1}>
+        <FooterLine hints={HINTS} width={width - 2} />
+      </Box>
     </Box>
   )
 }

@@ -3,6 +3,7 @@
  * danger 模式整体红色，用于不可撤销的删除类操作。
  */
 import { Box, Text, useInput } from 'ink'
+import { colors } from '../ui/theme.js'
 
 export interface ConfirmDialogProps {
   title: string
@@ -37,21 +38,21 @@ export function ConfirmDialog({
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor={danger ? 'red' : 'cyan'}
+      borderColor={danger ? colors.danger : colors.accent}
       paddingX={1}
       width={width}
     >
       <Text>
-        <Text bold color={danger ? 'red' : 'cyan'}>{`${danger ? '⚠' : '◆'} `}</Text>
-        <Text bold color={danger ? 'red' : undefined}>{title}</Text>
+        <Text bold color={danger ? colors.danger : colors.accent}>{`${danger ? '⚠' : '◆'} `}</Text>
+        <Text bold color={danger ? colors.danger : undefined}>{title}</Text>
       </Text>
       {lines.map((line, index) => (
-        <Text key={index} color={danger ? 'red' : undefined}>
+        <Text key={index} color={danger ? colors.danger : undefined}>
           {` ${line}`}
         </Text>
       ))}
       <Text>
-        <Text bold color={danger ? 'red' : 'green'}>{'y'}</Text>
+        <Text bold color={danger ? colors.danger : colors.success}>{'y'}</Text>
         <Text dimColor>{' 确认  '}</Text>
         <Text bold>{'n'}</Text>
         <Text dimColor>{'/Esc 取消'}</Text>

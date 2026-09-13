@@ -3,10 +3,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { ScrollList } from '../components/ScrollList.js'
 import { spinnerFrame } from '../components/DelayBadge.js'
+import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
+import { Panel } from '../ui/Panel.js'
+import { colors, styles, toneColor, type Tone } from '../ui/theme.js'
+import { progressBar } from '../components/ProgressDialog.js'
 import { ConfirmDialog } from '../components/ConfirmDialog.js'
 import { InputDialog, type InputField } from '../components/InputDialog.js'
 import { ProgressDialog } from '../components/ProgressDialog.js'
 import { formatBytes, formatRelativeTime, fitDisplay, padDisplay } from '../commands/output.js'
+import type { ProviderRow } from '../hooks/useProviders.js'
 import type { UseProvidersResult } from '../hooks/useProviders.js'
 import type { AppConfig } from '../config.js'
 import {
@@ -22,6 +27,42 @@ import type { ServiceDeps, Step } from '../config/subscriptionService.js'
 import { loadSubscriptions } from '../config/subscriptions.js'
 import type { Subscription } from '../config/types.js'
 import { validateNameInput, validatePrefixInput, validateUrlInput } from './subscriptionFields.js'
+
+/** 到期语义（纯函数）：长期/已过期/7 天内警告/普通剩余天数 */
+export function expireInfo(
+  expire: number | undefined,
+  now: number,
+): { text: string; tone: Tone | undefined } {
+  if (!expire) return { text: '长期', tone: undefined }
+  const days = Math.ceil((expire - now) / 86_400_000)
+  if (days <= 0) return { text: '已过期', tone: 'negative' }
+  if (days < 7) return { text: `${days}天`, tone: 'caution' }
+  return { text: `${days}天`, tone: undefined }
+}
+
+/** 使用率条语义（纯函数）：剩余 <10% 转红，其余绿色；无总量则不渲染条 */
+export function usageBar(
+  row: Pick<ProviderRow, 'remaining'> & { usage?: { used: number; total: number } },
+  barWidth = 12,
+): { text: string; tone: Tone } | undefined {
+  const { remaining, usage } = row
+  if (!usage || usage.total <= 0 || remaining === undefined) return undefined
+  const fraction = Math.min(1, Math.max(0, usage.used / usage.total))
+  const tone: Tone = remaining / usage.total < 0.1 ? 'negative' : 'positive'
+  return { text: progressBar(fraction, barWidth), tone }
+}
+
+const HINTS: FooterHint[] = [
+  { key: '↑↓', label: '移动' },
+  { key: 'a', label: '新增' },
+  { key: 'd', label: '删除' },
+  { key: 'e', label: '编辑' },
+  { key: 'u', label: '更新' },
+  { key: 'U', label: '全部更新' },
+  { key: 'c', label: '健康检查' },
+  { key: 'Enter', label: '展开节点' },
+  { key: 'r', label: '刷新' },
+]
 
 export interface ProvidersViewProps {
   providers: UseProvidersResult
@@ -264,51 +305,73 @@ export function ProvidersView({
     { isActive: active },
   )
 
-  const listHeight = expanded ? Math.max(2, Math.floor((height - 5) / 2)) : Math.max(3, height - 4)
+  // Panel 顶线/底边共 2 行；展开模式下节点区还要占下半屏
+  const listHeight = expanded ? Math.max(2, Math.floor((height - 7) / 2)) : Math.max(3, height - 6)
+
+  // 列宽：窄终端收窄使用率条。
+  // 表格最小可用宽度约 72 列（更窄表头会折行）；spec 只承诺页脚降级与
+  // Panel<20 退化，更窄档位留待后续按需收窄 UPDATED/EXPIRES。
+  const barWidth = width >= 100 ? 14 : 10
+  // 末尾 +1 列给条与 UPDATED 之间留呼吸空隙
+  const usageColWidth = 10 + 1 + barWidth + 2 + 1
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Text bold underline>
-        {padDisplay('NAME', 14)}
-        {padDisplay('NODES', 12)}
-        {padDisplay('USAGE', 14)}
-        {'UPDATED'}
-      </Text>
-      <ScrollList
-        items={rows}
-        selected={index}
-        height={listHeight}
-        emptyText="当前配置没有 proxy-providers（按 a 添加订阅）"
-        renderItem={(row, _i, isSelected) => (
-          <Text
-            color={isSelected ? 'black' : undefined}
-            backgroundColor={isSelected ? 'cyan' : undefined}
-          >
-            {`${isSelected ? '>' : ' '} `}
-            {padDisplay(row.name, 12)}
-            {row.updating ? (
-              <Text color="cyan">{padDisplay(`${spinnerFrame(tick)} 更新中`, 12)}</Text>
-            ) : (
-              <Text color={row.alive > 0 ? 'green' : 'red'}>
-                {padDisplay(`${row.alive}/${row.nodes}`, 12)}
+      <Panel title={`订阅 · ${rows.length}`} width={width}>
+        <Text {...styles.tableHeader}>
+          {padDisplay('NAME', 14)}
+          {padDisplay('NODES', 12)}
+          {padDisplay('USAGE', usageColWidth)}
+          {padDisplay('UPDATED', 12)}
+          {'EXPIRES'}
+        </Text>
+        <ScrollList
+          items={rows}
+          selected={index}
+          height={listHeight}
+          emptyText="当前配置没有 proxy-providers（按 a 添加订阅）"
+          renderItem={(row, _i, isSelected) => {
+            const bar = usageBar(row, barWidth)
+            const expire = expireInfo(row.expire, Date.now())
+            return (
+              <Text>
+                {/* ▌ 属 ambiguous 宽度字符（部分终端 2 列），依赖列宽余量吸收 */}
+                {isSelected ? <Text {...styles.rowFocus}>{'▌'}</Text> : ' '}
+                {` ${padDisplay(fitDisplay(row.name, 12), 12)}`}
+                {row.updating ? (
+                  <Text color={colors.info}>{padDisplay(`${spinnerFrame(tick)} 更新中`, 12)}</Text>
+                ) : (
+                  <Text color={row.alive > 0 ? colors.success : colors.danger}>
+                    {padDisplay(`${row.alive}/${row.nodes}`, 12)}
+                  </Text>
+                )}
+                <Text color={colors.muted}>
+                  {padDisplay(row.remaining === undefined ? '---' : formatBytes(row.remaining), 10)}
+                </Text>
+                {bar ? (
+                  <Text color={toneColor[bar.tone]}>{padDisplay(` ${bar.text}`, usageColWidth - 10)}</Text>
+                ) : (
+                  padDisplay(' ---', usageColWidth - 10)
+                )}
+                <Text {...styles.keyHint}>
+                  {padDisplay(formatRelativeTime(row.updatedAt), 12)}
+                </Text>
+                <Text color={expire.tone ? toneColor[expire.tone] : colors.muted}>
+                  {expire.text}
+                </Text>
               </Text>
-            )}
-            {padDisplay(row.remaining === undefined ? '---' : formatBytes(row.remaining), 14)}
-            {formatRelativeTime(row.updatedAt)}
-          </Text>
-        )}
-      />
+            )
+          }}
+        />
+      </Panel>
 
       {/* 更新失败是常态（域名失效、经代理 403），错误必须完整展示 */}
       {current?.error && dialog.type === 'none' ? (
-        <Box borderStyle="round" borderColor="red" paddingX={1} flexDirection="column">
-          <Text color="red" bold>
-            {`${current.name} 更新失败`}
-          </Text>
-          <Text color="red" wrap="wrap">
+        <Panel danger title={`${current.name} 更新失败`} width={width}>
+          <Text color={colors.danger} wrap="wrap">
             {current.error}
           </Text>
-        </Box>
+        </Panel>
       ) : null}
 
       {expanded && dialog.type === 'none' ? (
@@ -323,7 +386,7 @@ export function ProvidersView({
                 {'  '}
                 {fitDisplay(node.name, Math.max(20, width - 20))}
                 {node.delay ? (
-                  <Text color="green">{`${node.delay}ms`}</Text>
+                  <Text color={colors.success}>{`${node.delay}ms`}</Text>
                 ) : (
                   <Text dimColor>---</Text>
                 )}
@@ -394,18 +457,17 @@ export function ProvidersView({
       ) : null}
 
       {dialog.type === 'error' ? (
-        <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
-          <Text color="red" bold>操作失败</Text>
+        <Panel danger title="操作失败" width={width}>
           {dialog.message.map((line, i) => (
-            <Text key={i} color="red" wrap="wrap">{line}</Text>
+            <Text key={i} color={colors.danger} wrap="wrap">{line}</Text>
           ))}
-          <Text dimColor>按任意键关闭</Text>
-        </Box>
+          <Text {...styles.keyHint}>按任意键关闭</Text>
+        </Panel>
       ) : null}
 
-      <Text dimColor>
-        {' ↑↓ 移动  a 新增  d 删除  e 编辑  u 更新  U 全部更新  c 健康检查  Enter 展开节点  r 刷新'}
-      </Text>
+      <Box paddingLeft={1}>
+        <FooterLine hints={HINTS} width={width - 2} />
+      </Box>
     </Box>
   )
 }

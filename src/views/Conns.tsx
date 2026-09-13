@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { MihomoClient } from '../api/client.js'
 import { ScrollList } from '../components/ScrollList.js'
+import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
+import { Panel } from '../ui/Panel.js'
+import { colors, styles } from '../ui/theme.js'
 import { formatBytes, fitDisplay, padDisplay } from '../commands/output.js'
 import type { ConnectionItem } from '../api/types.js'
 import type { AppConfig } from '../config.js'
@@ -17,6 +20,13 @@ export interface ConnsViewProps {
 }
 
 type SortKey = 'traffic' | 'time' | 'host'
+
+const HINTS: FooterHint[] = [
+  { key: '↑↓', label: '移动' },
+  { key: 'd', label: '关闭选中' },
+  { key: 'D', label: '关闭全部' },
+  { key: 's', label: '切换排序' },
+]
 
 function describeHost(conn: ConnectionItem): string {
   const { host, sniffHost, destinationIP, destinationPort } = conn.metadata
@@ -108,7 +118,7 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Text bold underline>
+      <Text {...styles.tableHeader}>
         {' '}
         {padDisplay('HOST', hostWidth - 1)}
         {narrow ? '' : padDisplay('CHAIN', 24)}
@@ -122,35 +132,32 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
         height={listHeight}
         emptyText="当前无活跃连接"
         renderItem={(conn, _i, isSelected) => (
-          <Text
-            color={isSelected ? 'black' : undefined}
-            backgroundColor={isSelected ? 'cyan' : undefined}
-            wrap="truncate-end"
-          >
-            {`${isSelected ? '>' : ' '}`}
+          <Text wrap="truncate-end">
+            {/* ▌ 属 ambiguous 宽度字符（部分终端 2 列），依赖列宽余量吸收 */}
+            {isSelected ? <Text {...styles.rowFocus}>{'▌'}</Text> : ' '}
             {fitDisplay(describeHost(conn), hostWidth - 2)}
             {' '}
             {/* chains 从出口到入口排列，首位即实际出口节点 */}
             {narrow ? '' : `${fitDisplay(conn.chains.at(0) ?? '', 23)} `}
-            {padDisplay(formatBytes(conn.upload), 10)}
-            {padDisplay(formatBytes(conn.download), 10)}
+            <Text color={colors.success}>{padDisplay(formatBytes(conn.upload), 10)}</Text>
+            <Text color={colors.success}>{padDisplay(formatBytes(conn.download), 10)}</Text>
             {formatDuration(conn.start)}
           </Text>
         )}
       />
 
       {confirmAll ? (
-        <Box borderStyle="round" borderColor="red" paddingX={1}>
-          <Text color="red" bold>
-            {`确认关闭全部 ${conns.length} 条连接？按 y 确认，其他键取消`}
-          </Text>
-        </Box>
+        <Panel danger title={`确认关闭全部 ${conns.length} 条连接？`} width={width}>
+          <Text color={colors.danger}>按 y 确认，其他键取消</Text>
+        </Panel>
       ) : (
         <Text dimColor>
           {` 共 ${conns.length} 条  累计 ↑${formatBytes(data?.uploadTotal ?? 0)} ↓${formatBytes(data?.downloadTotal ?? 0)}  排序：${sort}`}
         </Text>
       )}
-      <Text dimColor>{' ↑↓ 移动  d 关闭选中  D 关闭全部  s 切换排序'}</Text>
+      <Box paddingLeft={1}>
+        <FooterLine hints={HINTS} width={width - 2} />
+      </Box>
     </Box>
   )
 }

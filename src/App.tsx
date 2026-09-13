@@ -12,7 +12,11 @@ import type { LogLevel } from './api/types.js'
 import { useProxies } from './hooks/useProxies.js'
 import { useProviders } from './hooks/useProviders.js'
 import { useConnectionsStream, useLogStream, useStatusStream } from './hooks/useStream.js'
-import { StatusBar } from './components/StatusBar.js'
+import { StatusBar, stateTone } from './components/StatusBar.js'
+import { TopBar } from './ui/TopBar.js'
+import { Panel } from './ui/Panel.js'
+import { FooterLine } from './ui/FooterLine.js'
+import { colors } from './ui/theme.js'
 import { ProxiesView } from './views/Proxies.js'
 import { ProvidersView } from './views/Providers.js'
 import { LogsView } from './views/Logs.js'
@@ -20,15 +24,16 @@ import { ConnsView } from './views/Conns.js'
 
 const TABS = ['节点', '订阅', '日志', '连接'] as const
 
+const MODE_NAMES: Record<string, string> = { rule: '规则', global: '全局', direct: '直连' }
+
 export interface AppProps {
   config: AppConfig
   /** 启动时已取到的内核信息，避免界面刚出现就显示「?」 */
   version: string | undefined
   mode: 'rule' | 'global' | 'direct' | undefined
-  port: number | undefined
 }
 
-export function App({ config, version, mode, port }: AppProps) {
+export function App({ config, version, mode }: AppProps) {
   const { exit } = useApp()
   const { stdout } = useStdout()
   const [tab, setTab] = useState(0)
@@ -127,34 +132,43 @@ export function App({ config, version, mode, port }: AppProps) {
     }
   })()
 
-  // 布局预算：标签栏 1 + 提示行 1 + 状态栏 2
-  const bodyHeight = Math.max(6, size.rows - 5)
+  // 布局预算：顶栏卡片 3（标题线+内容+底边）+ 键提示/消息共用 1 + 状态栏 2
+  const bodyHeight = Math.max(6, size.rows - 6)
   const disconnected = status.state === 'closed' || status.state === 'reconnecting'
+  // 连接中视同已连接（沿用既有行为；真正的断开/重连才降级）
+  const shownState = disconnected ? status.state : 'open'
 
   return (
     <Box flexDirection="column" width={size.columns} minHeight={size.rows}>
-      <Box>
-        <Text>
-          {TABS.map((name, index) => (
-            <Text
-              key={name}
-              bold={index === tab}
-              color={index === tab ? 'black' : undefined}
-              backgroundColor={index === tab ? 'cyan' : undefined}
-            >
-              {` [${index + 1}]${name} `}
-            </Text>
-          ))}
-          <Text dimColor>{'  Tab 循环  M 切换模式  ESC 退出'}</Text>
-        </Text>
+      <TopBar
+        tabs={TABS}
+        active={tab}
+        modeLabel={MODE_NAMES[currentMode] ?? currentMode}
+        apiPort={apiPort}
+        statusTone={stateTone(shownState)}
+        width={size.columns}
+      />
+      <Box paddingX={1} height={1}>
+        {message ? (
+          <Text color={colors.success}>{` ${message}`}</Text>
+        ) : (
+          <FooterLine
+            hints={[
+              { key: 'Tab', label: '循环' },
+              { key: 'M', label: '切换模式' },
+              { key: 'ESC', label: '退出' },
+            ]}
+            width={size.columns - 2}
+          />
+        )}
       </Box>
 
       {proxies.error && tab === 0 ? (
-        <Box borderStyle="round" borderColor="red" paddingX={1}>
-          <Text color="red">
-            {`内核不可达：${proxies.error}　请检查 systemctl --user status mihomo`}
+        <Panel danger title="内核不可达" width={size.columns}>
+          <Text color={colors.danger}>
+            {`${proxies.error}　请检查 systemctl --user status mihomo`}
           </Text>
-        </Box>
+        </Panel>
       ) : null}
 
       <Box flexDirection="column" flexGrow={1} height={bodyHeight}>
@@ -203,21 +217,15 @@ export function App({ config, version, mode, port }: AppProps) {
         ) : null}
       </Box>
 
-      <Box height={1}>
-        {message ? <Text color="green">{` ${message}`}</Text> : <Text> </Text>}
-      </Box>
-
       <StatusBar
         version={version}
         mode={currentMode}
-        port={port}
         up={status.up}
         down={status.down}
         upTotal={status.upTotal}
         downTotal={status.downTotal}
         memory={status.memory}
-        state={disconnected ? status.state : 'open'}
-        apiPort={apiPort}
+        state={shownState}
         currentNode={proxies.currentNode}
       />
     </Box>
