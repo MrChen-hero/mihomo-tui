@@ -104,7 +104,7 @@ export function depsFromAppConfig(
   overrides: Partial<ServiceDeps> = {},
 ): ServiceDeps {
   return {
-    manager: new ConfigManager(config.mihomoDir),
+    manager: new ConfigManager(config.mihomoDir, config.mihomoBin),
     service: new ServiceManager(),
     ...overrides,
   }

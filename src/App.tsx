@@ -1,5 +1,5 @@
 /**
- * Ink 根组件：四个标签页 + 全局快捷键 + 底部状态栏。
+ * Ink 根组件：五个标签页 + 全局快捷键 + 底部状态栏。
  *
  * 退出必须显式 process.exit —— mihomo 不回应 WebSocket close 帧，
  * 句柄不释放，事件循环永不为空（SPEC 3.6）。
@@ -23,8 +23,9 @@ import { ProxiesView } from './views/Proxies.js'
 import { ProvidersView } from './views/Providers.js'
 import { LogsView } from './views/Logs.js'
 import { ConnsView } from './views/Conns.js'
+import { SettingsView } from './views/Settings.js'
 
-const TABS = ['节点', '订阅', '日志', '连接'] as const
+const TABS = ['节点', '订阅', '日志', '连接', '设置'] as const
 
 const MODE_NAMES: Record<string, string> = { rule: '规则', global: '全局', direct: '直连' }
 
@@ -97,7 +98,7 @@ export function App({ config, version, mode }: AppProps) {
       return
     }
     // 日志页在编辑过滤词时会吞掉普通按键，这里只处理明确的全局键
-    if (input >= '1' && input <= '4') {
+    if (input >= '1' && input <= '5') {
       setTab(Number(input) - 1)
       return
     }
@@ -245,6 +246,16 @@ export function App({ config, version, mode }: AppProps) {
             height={bodyHeight}
             width={size.columns}
             active={tab === 3}
+            onMessage={setMessage}
+          />
+        ) : null}
+        {tab === 4 ? (
+          <SettingsView
+            config={config}
+            version={version}
+            height={bodyHeight}
+            width={size.columns}
+            active={tab === 4}
             onMessage={setMessage}
           />
         ) : null}

@@ -161,7 +161,24 @@ describe('buildSkeleton 骨架组装', () => {
     expect(Object.keys(skeleton['proxy-providers'] as object)).toEqual(['alpha', 'beta'])
     expect((skeleton.rules as string[])[0]).toBe('DOMAIN,a.example.com,DIRECT')
     expect((skeleton.rules as string[]).at(-1)).toBe('MATCH,PROXY')
-    // 旧 dns.enable=false → 翻开并替换上游
+    // 旧 dns.enable=false → 派生为关：dns 段原样保留（设置页关掉后不被翻回来）
+    expect((skeleton.dns as Record<string, unknown>)['enable']).toBe(false)
+    expect((skeleton.dns as Record<string, unknown>)['nameserver-policy']).toEqual({
+      'claude.ai': '1.1.1.1',
+    })
+    expect(warnings.some((warning) => warning.includes('dns.enable'))).toBe(false)
+  })
+
+  it('dns.enable 派生：旧配置开着时上游仍被规范为实测可达地址', () => {
+    const old = oldConfig({ dns: { enable: true, 'nameserver-policy': { 'x.com': '1.1.1.1' } } })
+    const { skeleton, warnings } = buildSkeleton(old, [ALPHA])
+    expect((skeleton.dns as Record<string, unknown>)['enable']).toBe(true)
+    expect((skeleton.dns as Record<string, unknown>)['nameserver']).toEqual(DNS_UPSTREAM.nameserver)
+    expect(warnings.some((warning) => warning.includes('dns.enable'))).toBe(false)
+  })
+
+  it('显式 enableDns:true 覆盖旧配置的关闭态（翻开并替换上游，产 dns 警告）', () => {
+    const { skeleton, warnings } = buildSkeleton(oldConfig(), [ALPHA], { enableDns: true })
     expect((skeleton.dns as Record<string, unknown>)['enable']).toBe(true)
     expect((skeleton.dns as Record<string, unknown>)['nameserver']).toEqual(DNS_UPSTREAM.nameserver)
     expect(warnings.some((warning) => warning.includes('dns.enable'))).toBe(true)

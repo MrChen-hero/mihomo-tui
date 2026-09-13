@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG, loadConfig } from '../config.js'
+import { DEFAULT_CONFIG, loadConfig, saveConfig } from '../config.js'
 
 function tempFile(content?: string): string {
   const dir = mkdtemp()
@@ -81,5 +81,38 @@ describe('loadConfig 非 ENOENT 读取错误', () => {
   it('路径是目录时抛出异常而不是吞掉', () => {
     const dir = mkdtemp()
     expect(() => loadConfig(dir)).toThrow()
+  })
+})
+
+describe('downloadSource 与 mihomoBin（设置页新字段）', () => {
+  it('custom 模式缺合法前缀时整体回退 auto', () => {
+    const path = tempFile(JSON.stringify({ downloadSource: { mode: 'custom' } }))
+    expect(loadConfig(path).downloadSource).toEqual({ mode: 'auto' })
+    const bad = tempFile(
+      JSON.stringify({ downloadSource: { mode: 'custom', customPrefix: 'not-a-url' } }),
+    )
+    expect(loadConfig(bad).downloadSource).toEqual({ mode: 'auto' })
+  })
+
+  it('合法 custom 前缀与锁定源原样保留；未知 mode 回退 auto', () => {
+    const custom = tempFile(
+      JSON.stringify({
+        downloadSource: { mode: 'custom', customPrefix: 'https://m.example/' },
+        mihomoBin: '/opt/mihomo/bin',
+      }),
+    )
+    const loaded = loadConfig(custom)
+    expect(loaded.downloadSource).toEqual({ mode: 'custom', customPrefix: 'https://m.example/' })
+    expect(loaded.mihomoBin).toBe('/opt/mihomo/bin')
+    const unknown = tempFile(JSON.stringify({ downloadSource: { mode: 'turbo' } }))
+    expect(loadConfig(unknown).downloadSource).toEqual({ mode: 'auto' })
+  })
+
+  it('saveConfig 原子写回并可重新读取（downloadSource 往返）', () => {
+    const dir = mkdtemp()
+    const path = join(dir, 'config.json')
+    saveConfig({ ...DEFAULT_CONFIG, downloadSource: { mode: 'gh-proxy.com' } }, path)
+    expect(loadConfig(path).downloadSource).toEqual({ mode: 'gh-proxy.com' })
+    expect(existsSync(`${path}.tmp`)).toBe(false)
   })
 })

@@ -16,6 +16,8 @@ export interface ProgressDialogProps {
   step: number
   /** 已完成的步骤文案 */
   completed?: string[]
+  /** 当前步骤的补充说明行（如下载字节进度「12.3 MB / 18.9 MB (65%)」） */
+  detail?: string
   cancelable?: boolean
   onCancel?: () => void
   width?: number
@@ -44,6 +46,7 @@ export function ProgressDialog({
   total,
   step,
   completed = [],
+  detail,
   cancelable = false,
   onCancel,
   width = 56,
@@ -58,6 +61,7 @@ export function ProgressDialog({
     <Box flexDirection="column" borderStyle="round" borderColor={colors.accent} paddingX={1} width={width}>
       <Text bold>{` ${title}`}</Text>
       <Text>{` [${Math.min(step + 1, total)}/${total}] ${current}`}</Text>
+      {detail ? <Text dimColor>{` ${detail}`}</Text> : null}
       <Text color={colors.accent}>{` ${progressBar(percent / 100)} ${percent}%`}</Text>
       {completed.map((label) => (
         <Text key={label} color={colors.success}>{` ✓ ${label}`}</Text>

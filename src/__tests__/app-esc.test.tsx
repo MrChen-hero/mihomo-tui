@@ -6,7 +6,7 @@
  *
  * App 用不可达的 api 地址挂载：钩子的请求快速失败走错误态，不触真实内核。
  */
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -184,6 +184,39 @@ describe('App 分级退出闸门', () => {
     term.press('\x1b') // 主界面仍活着：再按 ESC 确认框再次出现
     await delay(150)
     expect(textOf(term.frames().slice(reopenMark))).toContain('确认退出？')
+    term.instance.unmount()
+  })
+
+  it('数字键 5 打开设置页；设置页 ESC 仍走分级退出', async () => {
+    const mihomoDir = mkdtempSync(join(tmpdir(), 'mihomo-tui-appset-'))
+    writeFileSync(join(mihomoDir, 'config.yaml'), 'mode: rule\nmixed-port: 17890\nlog-level: info\n', 'utf8')
+    const config: AppConfig = {
+      api: 'http://127.0.0.1:9', // 不可达：不触真实内核
+      secret: '',
+      mihomoDir,
+      testUrl: 'http://127.0.0.1:9',
+      testTimeout: 500,
+      downloadSource: { mode: 'custom', customPrefix: 'http://127.0.0.1:9/' },
+    }
+    const term = createTerminal(<App config={config} version="test" mode="rule" />, {
+      columns: 110,
+      rows: 34,
+    })
+    terminals.push(term)
+    await delay(150)
+    term.press('5')
+    await delay(150)
+    const text = textOf(term.frames())
+    expect(text).toContain('◆ 设置')
+    expect(text).toContain('17890')
+    expect(text).toContain('❯ 混合端口')
+
+    term.press('\x1b') // 设置页 ESC：弹退出确认（分级退出语义不变）
+    await delay(150)
+    expect(textOf(term.frames())).toContain('确认退出？')
+    term.press('n')
+    await delay(150)
+    expect(textOf(term.frames())).toContain('◆ 设置') // 取消后回到设置页
     term.instance.unmount()
   })
 })

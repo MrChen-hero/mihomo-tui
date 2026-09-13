@@ -286,7 +286,10 @@ export function buildSkeleton(
   subscriptions: Subscription[],
   options: SkeletonOptions = {},
 ): { skeleton: ParsedYaml; warnings: string[] } {
-  const enableDns = options.enableDns ?? true
+  // DNS 接管开关与 mixed-port 等字段同语义：缺省从旧配置派生（设置页关掉后，
+  // 后续增删订阅不会被静默翻回来）；显式传参（旧测试/调用方）行为不变
+  const oldDns = pickRecord(oldConfig, 'dns')
+  const enableDns = options.enableDns ?? (oldDns ? oldDns['enable'] !== false : true)
   const testUrl = options.testUrl ?? TEST_URL
   const regions = options.regions ?? REGIONS
 

@@ -25,7 +25,11 @@ export interface RegionDef {
 }
 
 export interface SkeletonOptions {
-  /** 默认 true：翻开 dns.enable 并写入本机实测可达的上游 */
+  /**
+   * DNS 接管开关。缺省从旧配置 dns.enable 派生（缺失或非记录视为 true）——
+   * 与 mixed-port 等字段同语义，设置页关闭后不会被后续重新生成翻回来。
+   * 显式传 true 时翻开 dns.enable 并写入本机实测可达的上游。
+   */
   enableDns?: boolean
   /** 延迟测试地址 */
   testUrl?: string
