@@ -266,6 +266,14 @@ function pickRecord(source: ParsedYaml, key: string): ParsedYaml | undefined {
   return isRecord(value) ? (value as ParsedYaml) : undefined
 }
 
+function hostOf(url: string): string | undefined {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * 构造完整的新配置对象，保留旧配置里所有需要维护的手工设置。
  * 问题不抛异常、不打印，统一进 warnings（设计稿 4.2）。
@@ -284,10 +292,24 @@ export function buildSkeleton(
   const oldRules = isStringArray(oldConfig.rules) ? oldConfig.rules : []
   const { rules: rewritten, missing } = rewriteRules(oldRules, groupNames)
 
-  // 订阅域名的 DIRECT 规则必须在最前面，且去掉旧配置里可能已有的重复条目
+  // 订阅域名的 DIRECT 规则必须在最前面。去重之外还要剥离「已删除订阅」
+  // 遗留的直连规则：上一轮清单里有、这一轮没有的主机名，其规则是孤儿
+  // （手工为无关域名添加的 DIRECT 规则不受影响）。
   const directRules = subscriptionDirectRules(subscriptions)
   const directSet = new Set(directRules)
-  const rules = [...directRules, ...rewritten.filter((rule) => !directSet.has(rule))]
+  const currentHosts = new Set(
+    subscriptions.map((sub) => hostOf(sub.url)).filter((host) => host !== undefined),
+  )
+  const staleRules = new Set(
+    (options.previousSubscriptions ?? [])
+      .map((sub) => hostOf(sub.url))
+      .filter((host): host is string => host !== undefined && !currentHosts.has(host))
+      .map((host) => `DOMAIN,${host},DIRECT`),
+  )
+  const rules = [
+    ...directRules,
+    ...rewritten.filter((rule) => !directSet.has(rule) && !staleRules.has(rule)),
+  ]
 
   // dns 段整体保留，只按需翻开 enable 并替换上游
   const dns: ParsedYaml = { ...(pickRecord(oldConfig, 'dns') ?? {}) }
