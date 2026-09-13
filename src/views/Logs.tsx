@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
 import { colors } from '../ui/theme.js'
+import { useKeyCapture } from '../ui/keyCapture.js'
 import type { LogLevel } from '../api/types.js'
 import type { UseLogStreamResult } from '../hooks/useStream.js'
 
@@ -63,6 +64,8 @@ export function LogsView({
     return logs.entries.filter((e) => e.payload.toLowerCase().includes(needle))
   }, [logs.entries, filter])
 
+  // 过滤词编辑态捕获按键（含 ESC——退出编辑而非退出 TUI）
+  useKeyCapture(editing)
   useInput(
     (input, key) => {
       if (editing) {

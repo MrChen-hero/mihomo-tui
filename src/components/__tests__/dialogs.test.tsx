@@ -125,10 +125,10 @@ describe('InputDialog 渲染与交互', () => {
     expect(text).toContain('添加订阅')
     expect(text).toContain('订阅名称')
     expect(text).toContain('<my-airport>')
-    expect(text).toContain('Esc 取消')
+    expect(text).toContain('ESC 取消')
     // cc-switch 风格：激活字段有 ❯ 标记与编辑提示行
     expect(text).toContain('❯ 订阅名称')
-    expect(text).toContain('支持粘贴')
+    expect(text).toContain('支持整串粘贴')
   })
 
   it('键入追加到当前字段；secret 字段以 * 回显', async () => {
@@ -361,6 +361,26 @@ describe('InputDialog 渲染与交互', () => {
     terminal.press(RETURN) // 拦截
     await delay()
     expect(textOf(terminal.frames())).toContain('名称只能包含字母数字与 -_')
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('错误集中展示：当前字段合法时回退显示首个出错字段', async () => {
+    const onSubmit = vi.fn()
+    const terminal = mount(
+      <InputDialog title="添加订阅" fields={[NAME_FIELD, URL_FIELD]} onSubmit={onSubmit} onCancel={() => {}} />,
+    )
+    await delay()
+    terminal.press('a')
+    terminal.press(RETURN) // name 填好后前进到 url（此时 name 合法）
+    await delay()
+    terminal.press(RETURN) // url 为空：提交拦截，tried=true
+    await delay()
+    const beforeUp = terminal.frames().length
+    terminal.press(UP) // 回到合法的 name 字段：错误只能靠回退分支（首个出错字段）浮出
+    await delay()
+    // 只看 UP 之后的增量帧：错误行若因回退分支被删而消失，这里会转红
+    const tail = textOf(terminal.frames().slice(beforeUp))
+    expect(tail).toContain('⚠ 订阅 URL不能为空') // validateField 内建必填文案：`${label}不能为空`
     expect(onSubmit).not.toHaveBeenCalled()
   })
 

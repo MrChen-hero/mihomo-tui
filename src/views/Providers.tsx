@@ -25,6 +25,7 @@ import {
 } from '../config/subscriptionService.js'
 import type { ServiceDeps, Step } from '../config/subscriptionService.js'
 import { loadSubscriptions } from '../config/subscriptions.js'
+import { useKeyCapture } from '../ui/keyCapture.js'
 import type { Subscription } from '../config/types.js'
 import { validateNameInput, validatePrefixInput, validateUrlInput } from './subscriptionFields.js'
 
@@ -233,6 +234,8 @@ export function ProvidersView({
     })
   }
 
+  // 错误对话框「任意键关闭」期间捕获按键，避免全局键穿透
+  useKeyCapture(dialog.type === 'error')
   useInput(
     (input, key) => {
       // 错误对话框：任意键关闭
@@ -317,153 +320,160 @@ export function ProvidersView({
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Panel title={`订阅 · ${rows.length}`} width={width}>
-        <Text {...styles.tableHeader}>
-          {padDisplay('NAME', 14)}
-          {padDisplay('NODES', 12)}
-          {padDisplay('USAGE', usageColWidth)}
-          {padDisplay('UPDATED', 12)}
-          {'EXPIRES'}
-        </Text>
-        <ScrollList
-          items={rows}
-          selected={index}
-          height={listHeight}
-          emptyText="当前配置没有 proxy-providers（按 a 添加订阅）"
-          renderItem={(row, _i, isSelected) => {
-            const bar = usageBar(row, barWidth)
-            const expire = expireInfo(row.expire, Date.now())
-            return (
-              <Text>
-                {/* ▌ 属 ambiguous 宽度字符（部分终端 2 列），依赖列宽余量吸收 */}
-                {isSelected ? <Text {...styles.rowFocus}>{'▌'}</Text> : ' '}
-                {` ${padDisplay(fitDisplay(row.name, 12), 12)}`}
-                {row.updating ? (
-                  <Text color={colors.info}>{padDisplay(`${spinnerFrame(tick)} 更新中`, 12)}</Text>
-                ) : (
-                  <Text color={row.alive > 0 ? colors.success : colors.danger}>
-                    {padDisplay(`${row.alive}/${row.nodes}`, 12)}
+      {/* 模态语义：对话框打开时替代页面内容独占 body（对齐 cc-switch
+        FullScreenPanel / mihari 模态占屏）——固定高度下卡片与表格互相
+        挤压，窄终端（24 行）内层输入盒会被压塌错边 */}
+      {dialog.type !== 'none' ? (
+        <Box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
+          {dialog.type === 'input' ? (
+            <InputDialog
+              title={dialog.title}
+              fields={dialog.fields}
+              width={width}
+              onSubmit={(values) => {
+                const name = values['name'] ?? ''
+                const url = values['url'] ?? ''
+                const prefix = values['prefix'] ?? ''
+                if (dialog.submitLabel === 'add') {
+                  void runFlow('添加订阅', ADD_STEPS, async (onProgress) => {
+                    const result = await addSubscription(
+                      { name, url, prefix: prefix || undefined },
+                      { ...deps, onProgress },
+                    )
+                    return result.warnings[0] ?? `已添加订阅 ${name}`
+                  })
+                } else {
+                  void runFlow('编辑订阅', EDIT_STEPS, async (onProgress) => {
+                    const result = await editSubscriptionPrefix(name, prefix || undefined, {
+                      ...deps,
+                      onProgress,
+                    })
+                    if (result.unchanged) {
+                      setDialog({ type: 'none' })
+                      return '未做修改'
+                    }
+                    return result.warnings[0] ?? `已更新订阅 ${name} 的前缀`
+                  })
+                }
+              }}
+              onCancel={() => setDialog({ type: 'none' })}
+            />
+          ) : null}
+          {dialog.type === 'confirm' ? (
+            <ConfirmDialog
+              title={dialog.title}
+              message={dialog.message}
+              danger
+              onConfirm={() => {
+                const name = current?.name ?? ''
+                void runFlow('删除订阅', DELETE_STEPS, async (onProgress) => {
+                  await deleteSubscription(name, { ...deps, onProgress })
+                  return `已删除订阅 ${name}`
+                })
+              }}
+              onCancel={() => setDialog({ type: 'none' })}
+            />
+          ) : null}
+          {dialog.type === 'progress' ? (
+            <ProgressDialog
+              title={dialog.title}
+              current={dialog.currentLabel}
+              total={dialog.steps.length}
+              step={dialog.step}
+              completed={dialog.completed}
+            />
+          ) : null}
+          {dialog.type === 'error' ? (
+            <Panel danger title="操作失败" width={width}>
+              {dialog.message.map((line, i) => (
+                <Text key={i} color={colors.danger} wrap="wrap">{line}</Text>
+              ))}
+              <Text {...styles.keyHint}>按任意键关闭</Text>
+            </Panel>
+          ) : null}
+        </Box>
+      ) : (
+        <>
+          <Panel title={`订阅 · ${rows.length}`} width={width}>
+            <Text {...styles.tableHeader}>
+              {padDisplay('NAME', 14)}
+              {padDisplay('NODES', 12)}
+              {padDisplay('USAGE', usageColWidth)}
+              {padDisplay('UPDATED', 12)}
+              {'EXPIRES'}
+            </Text>
+            <ScrollList
+              items={rows}
+              selected={index}
+              height={listHeight}
+              emptyText="当前配置没有 proxy-providers（按 a 添加订阅）"
+              renderItem={(row, _i, isSelected) => {
+                const bar = usageBar(row, barWidth)
+                const expire = expireInfo(row.expire, Date.now())
+                return (
+                  <Text>
+                    {/* ▌ 属 ambiguous 宽度字符（部分终端 2 列），依赖列宽余量吸收 */}
+                    {isSelected ? <Text {...styles.rowFocus}>{'▌'}</Text> : ' '}
+                    {` ${padDisplay(fitDisplay(row.name, 12), 12)}`}
+                    {row.updating ? (
+                      <Text color={colors.info}>{padDisplay(`${spinnerFrame(tick)} 更新中`, 12)}</Text>
+                    ) : (
+                      <Text color={row.alive > 0 ? colors.success : colors.danger}>
+                        {padDisplay(`${row.alive}/${row.nodes}`, 12)}
+                      </Text>
+                    )}
+                    <Text color={colors.muted}>
+                      {padDisplay(row.remaining === undefined ? '---' : formatBytes(row.remaining), 10)}
+                    </Text>
+                    {bar ? (
+                      <Text color={toneColor[bar.tone]}>{padDisplay(` ${bar.text}`, usageColWidth - 10)}</Text>
+                    ) : (
+                      padDisplay(' ---', usageColWidth - 10)
+                    )}
+                    <Text {...styles.keyHint}>
+                      {padDisplay(formatRelativeTime(row.updatedAt), 12)}
+                    </Text>
+                    <Text color={expire.tone ? toneColor[expire.tone] : colors.muted}>
+                      {expire.text}
+                    </Text>
+                  </Text>
+                )
+              }}
+            />
+          </Panel>
+
+          {/* 更新失败是常态（域名失效、经代理 403），错误必须完整展示 */}
+          {current?.error ? (
+            <Panel danger title={`${current.name} 更新失败`} width={width}>
+              <Text color={colors.danger} wrap="wrap">
+                {current.error}
+              </Text>
+            </Panel>
+          ) : null}
+
+          {expanded ? (
+            <Box flexDirection="column" flexGrow={1}>
+              <Text bold underline>{`${expanded} 的节点（${expandedNodes.length}）`}</Text>
+              <ScrollList
+                items={expandedNodes}
+                selected={-1}
+                height={Math.max(2, height - listHeight - 6)}
+                renderItem={(node) => (
+                  <Text>
+                    {'  '}
+                    {fitDisplay(node.name, Math.max(20, width - 20))}
+                    {node.delay ? (
+                      <Text color={colors.success}>{`${node.delay}ms`}</Text>
+                    ) : (
+                      <Text dimColor>---</Text>
+                    )}
                   </Text>
                 )}
-                <Text color={colors.muted}>
-                  {padDisplay(row.remaining === undefined ? '---' : formatBytes(row.remaining), 10)}
-                </Text>
-                {bar ? (
-                  <Text color={toneColor[bar.tone]}>{padDisplay(` ${bar.text}`, usageColWidth - 10)}</Text>
-                ) : (
-                  padDisplay(' ---', usageColWidth - 10)
-                )}
-                <Text {...styles.keyHint}>
-                  {padDisplay(formatRelativeTime(row.updatedAt), 12)}
-                </Text>
-                <Text color={expire.tone ? toneColor[expire.tone] : colors.muted}>
-                  {expire.text}
-                </Text>
-              </Text>
-            )
-          }}
-        />
-      </Panel>
-
-      {/* 更新失败是常态（域名失效、经代理 403），错误必须完整展示 */}
-      {current?.error && dialog.type === 'none' ? (
-        <Panel danger title={`${current.name} 更新失败`} width={width}>
-          <Text color={colors.danger} wrap="wrap">
-            {current.error}
-          </Text>
-        </Panel>
-      ) : null}
-
-      {expanded && dialog.type === 'none' ? (
-        <Box flexDirection="column" flexGrow={1}>
-          <Text bold underline>{`${expanded} 的节点（${expandedNodes.length}）`}</Text>
-          <ScrollList
-            items={expandedNodes}
-            selected={-1}
-            height={Math.max(2, height - listHeight - 6)}
-            renderItem={(node) => (
-              <Text>
-                {'  '}
-                {fitDisplay(node.name, Math.max(20, width - 20))}
-                {node.delay ? (
-                  <Text color={colors.success}>{`${node.delay}ms`}</Text>
-                ) : (
-                  <Text dimColor>---</Text>
-                )}
-              </Text>
-            )}
-          />
-        </Box>
-      ) : null}
-
-      {dialog.type === 'input' ? (
-        <InputDialog
-          title={dialog.title}
-          fields={dialog.fields}
-          onSubmit={(values) => {
-            const name = values['name'] ?? ''
-            const url = values['url'] ?? ''
-            const prefix = values['prefix'] ?? ''
-            if (dialog.submitLabel === 'add') {
-              void runFlow('添加订阅', ADD_STEPS, async (onProgress) => {
-                const result = await addSubscription(
-                  { name, url, prefix: prefix || undefined },
-                  { ...deps, onProgress },
-                )
-                return result.warnings[0] ?? `已添加订阅 ${name}`
-              })
-            } else {
-              void runFlow('编辑订阅', EDIT_STEPS, async (onProgress) => {
-                const result = await editSubscriptionPrefix(name, prefix || undefined, {
-                  ...deps,
-                  onProgress,
-                })
-                if (result.unchanged) {
-                  setDialog({ type: 'none' })
-                  return '未做修改'
-                }
-                return result.warnings[0] ?? `已更新订阅 ${name} 的前缀`
-              })
-            }
-          }}
-          onCancel={() => setDialog({ type: 'none' })}
-        />
-      ) : null}
-
-      {dialog.type === 'confirm' ? (
-        <ConfirmDialog
-          title={dialog.title}
-          message={dialog.message}
-          danger
-          onConfirm={() => {
-            const name = current?.name ?? ''
-            void runFlow('删除订阅', DELETE_STEPS, async (onProgress) => {
-              await deleteSubscription(name, { ...deps, onProgress })
-              return `已删除订阅 ${name}`
-            })
-          }}
-          onCancel={() => setDialog({ type: 'none' })}
-        />
-      ) : null}
-
-      {dialog.type === 'progress' ? (
-        <ProgressDialog
-          title={dialog.title}
-          current={dialog.currentLabel}
-          total={dialog.steps.length}
-          step={dialog.step}
-          completed={dialog.completed}
-        />
-      ) : null}
-
-      {dialog.type === 'error' ? (
-        <Panel danger title="操作失败" width={width}>
-          {dialog.message.map((line, i) => (
-            <Text key={i} color={colors.danger} wrap="wrap">{line}</Text>
-          ))}
-          <Text {...styles.keyHint}>按任意键关闭</Text>
-        </Panel>
-      ) : null}
+              />
+            </Box>
+          ) : null}
+        </>
+      )}
 
       <Box paddingLeft={1}>
         <FooterLine hints={HINTS} width={width - 2} />

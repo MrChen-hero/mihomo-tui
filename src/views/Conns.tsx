@@ -6,6 +6,7 @@ import { ScrollList } from '../components/ScrollList.js'
 import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
 import { Panel } from '../ui/Panel.js'
 import { colors, styles } from '../ui/theme.js'
+import { useKeyCapture } from '../ui/keyCapture.js'
 import { formatBytes, fitDisplay, padDisplay } from '../commands/output.js'
 import type { ConnectionItem } from '../api/types.js'
 import type { AppConfig } from '../config.js'
@@ -65,6 +66,8 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
 
   const current = sorted[index]
 
+  // D 二次确认态捕获按键
+  useKeyCapture(confirmAll)
   useInput(
     (input, key) => {
       if (confirmAll) {

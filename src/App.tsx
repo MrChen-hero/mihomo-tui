@@ -17,6 +17,8 @@ import { TopBar } from './ui/TopBar.js'
 import { Panel } from './ui/Panel.js'
 import { FooterLine } from './ui/FooterLine.js'
 import { colors } from './ui/theme.js'
+import { keysCaptured } from './ui/keyCapture.js'
+import { ConfirmDialog } from './components/ConfirmDialog.js'
 import { ProxiesView } from './views/Proxies.js'
 import { ProvidersView } from './views/Providers.js'
 import { LogsView } from './views/Logs.js'
@@ -43,6 +45,8 @@ export function App({ config, version, mode }: AppProps) {
     (mode as 'rule' | 'global' | 'direct') || 'rule'
   )
   const [tick, setTick] = useState(0)
+  // 退出确认层：主界面 ESC 先弹确认（分级退出，spec 2026-09-13）
+  const [confirmExit, setConfirmExit] = useState(false)
   const [size, setSize] = useState({
     columns: stdout?.columns ?? 80,
     rows: stdout?.rows ?? 24,
@@ -82,9 +86,14 @@ export function App({ config, version, mode }: AppProps) {
   }, [spinning])
 
   useInput((input, key) => {
-    // Ctrl+C 与 ESC 都走同一条退出路径
+    // Ctrl+C 硬退出（mihari 语义：任何层都直接退）
     if (key.ctrl && input === 'c') {
       exit()
+      return
+    }
+    // 内层优先：对话框/文本编辑态/二次确认态捕获按键时全局键一律让路，
+    // 否则对话框里的 ESC 会被这里再消费一次把整只 TUI 退掉（广播式 useInput）
+    if (keysCaptured()) {
       return
     }
     // 日志页在编辑过滤词时会吞掉普通按键，这里只处理明确的全局键
@@ -97,7 +106,8 @@ export function App({ config, version, mode }: AppProps) {
       return
     }
     if (key.escape) {
-      exit()
+      // 分级退出：主界面 ESC 不再直接退，先弹退出确认（Enter 才真退）
+      setConfirmExit(true)
       return
     }
     // m 键切换模式: rule -> global -> direct -> rule
@@ -134,6 +144,9 @@ export function App({ config, version, mode }: AppProps) {
 
   // 布局预算：顶栏卡片 3（标题线+内容+底边）+ 键提示/消息共用 1 + 状态栏 2
   const bodyHeight = Math.max(6, size.rows - 6)
+  // 确认框为 in-flow 插入（约 5 行），确认期间同步压缩视图高度，
+  // 否则逻辑帧超高会把 TopBar 滚出屏顶
+  const viewHeight = confirmExit ? Math.max(6, bodyHeight - 5) : bodyHeight
   const disconnected = status.state === 'closed' || status.state === 'reconnecting'
   // 连接中视同已连接（沿用既有行为；真正的断开/重连才降级）
   const shownState = disconnected ? status.state : 'open'
@@ -171,14 +184,14 @@ export function App({ config, version, mode }: AppProps) {
         </Panel>
       ) : null}
 
-      <Box flexDirection="column" flexGrow={1} height={bodyHeight}>
+      <Box flexDirection="column" flexGrow={1} height={viewHeight}>
         {tab === 0 ? (
           <ProxiesView
             proxies={proxies}
-            height={bodyHeight}
+            height={viewHeight}
             width={size.columns}
             tick={tick}
-            active={tab === 0}
+            active={tab === 0 && !confirmExit}
             onMessage={setMessage}
           />
         ) : null}
@@ -187,10 +200,10 @@ export function App({ config, version, mode }: AppProps) {
             providers={providers}
             config={config}
             onChanged={() => proxies.refresh()}
-            height={bodyHeight}
+            height={viewHeight}
             width={size.columns}
             tick={tick}
-            active={tab === 1}
+            active={tab === 1 && !confirmExit}
             onMessage={setMessage}
           />
         ) : null}
@@ -199,9 +212,9 @@ export function App({ config, version, mode }: AppProps) {
             logs={logs}
             level={logLevel}
             onLevelChange={setLogLevel}
-            height={bodyHeight}
+            height={viewHeight}
             width={size.columns}
-            active={tab === 2}
+            active={tab === 2 && !confirmExit}
             onMessage={setMessage}
           />
         ) : null}
@@ -209,13 +222,23 @@ export function App({ config, version, mode }: AppProps) {
           <ConnsView
             config={config}
             data={connections.data}
-            height={bodyHeight}
+            height={viewHeight}
             width={size.columns}
-            active={tab === 3}
+            active={tab === 3 && !confirmExit}
             onMessage={setMessage}
           />
         ) : null}
       </Box>
+
+      {confirmExit ? (
+        <ConfirmDialog
+          title="退出 mihomo-tui"
+          message={['确认退出？内核服务不受影响，仍在后台运行']}
+          enterConfirms
+          onConfirm={exit}
+          onCancel={() => setConfirmExit(false)}
+        />
+      ) : null}
 
       <StatusBar
         version={version}

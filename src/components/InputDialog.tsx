@@ -19,9 +19,12 @@
  * 光标与增删一律按码点数组操作，emoji 等代理对不会被 slice 切断。
  */
 import { Box, Text, useInput, usePaste } from 'ink'
+import { FooterLine } from '../ui/FooterLine.js'
+import { Panel } from '../ui/Panel.js'
 import { colors, styles } from '../ui/theme.js'
 import { useRef, useState, type ReactNode } from 'react'
 import { displayWidth } from '../commands/output.js'
+import { useKeyCapture } from '../ui/keyCapture.js'
 
 export interface InputField {
   label: string
@@ -181,6 +184,8 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
 
   usePaste(insertText)
 
+  // 对话框存活期间捕获全部按键：App 全局 handler（含 ESC 退出）一律让路
+  useKeyCapture(true)
   useInput((input, key) => {
     if (key.escape) {
       onCancel()
@@ -266,8 +271,18 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   })
 
   const tried = attempted
-  // 输入盒内可用列：外框 2 + paddingX 2 + 输入盒边框 2 + 输入盒 paddingX 2
-  const innerWidth = Math.max(10, width - 6)
+  // 居中窄卡片（spec 2026-09-13 §5.3）：min(64, max(44, width-8))；
+  // 终端窄于 44 列时退化为全宽（无居中），保可用性
+  const cardWidth = width < 44 ? width : Math.min(64, Math.max(44, width - 8))
+  // 输入盒内可用列：Panel 边框 2 + Panel paddingX 2 + 输入盒边框 2 + 输入盒 paddingX 2
+  const innerWidth = Math.max(10, cardWidth - 8)
+
+  // 校验错误集中展示：优先当前字段，其次第一个出错字段（替代逐字段错误行）
+  let shownError: string | undefined
+  if (tried) {
+    const activeField = fields[active]
+    shownError = (activeField && errors[activeField.key]) || fields.map((f) => errors[f.key]).find(Boolean)
+  }
 
   const renderValue = (field: InputField, value: string, isActive: boolean): ReactNode => {
     if (field.readOnly) {
@@ -315,47 +330,44 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     )
   }
 
-  return (
-    <Box flexDirection="column" borderStyle="round" borderColor={colors.accent} paddingX={1} width={width}>
-      <Text>
-        <Text bold color={colors.accent}>{'◆ '}</Text>
-        <Text bold>{title}</Text>
-      </Text>
+  const card = (
+    <Panel title={`◆ ${title}`} width={cardWidth}>
       {fields.map((field, index) => {
         const value = values[field.key] ?? ''
-        const error = errors[field.key]
-        const showError = tried && error !== undefined
         const isActive = index === active
         return (
           <Box key={field.key} flexDirection="column">
             {isActive ? (
               <Text>
                 <Text {...styles.keyCap}>{`❯ ${field.label}`}</Text>
+                {field.required ? <Text color={colors.danger}>{' *'}</Text> : null}
                 {field.readOnly ? <Text dimColor>{'（只读）'}</Text> : null}
               </Text>
             ) : (
               <Text>
                 <Text dimColor>{`  ${field.label}`}</Text>
+                {field.required ? <Text color={colors.danger}>{' *'}</Text> : null}
               </Text>
             )}
             {renderValue(field, value, isActive)}
-            {showError ? (
-              <Text color={colors.danger}>{`  ⚠ ${error}`}</Text>
-            ) : null}
           </Box>
         )
       })}
       <Box marginTop={1} flexDirection="column">
-        <Text>
-          <Text {...styles.keyCap}>{'↑↓/Tab'}</Text>
-          <Text dimColor>{' 切换  '}</Text>
-          <Text {...styles.keyCap}>{'Enter'}</Text>
-          <Text dimColor>{' 确认  '}</Text>
-          <Text {...styles.keyCap}>{'Esc'}</Text>
-          <Text dimColor>{' 取消'}</Text>
-        </Text>
-        <Text dimColor>{' 支持粘贴  ←→ 光标  Ctrl+U 清空'}</Text>
+        {shownError ? <Text color={colors.danger}>{`⚠ ${shownError}`}</Text> : null}
+        {/* Enter 文案随位置切换：末项=提交，其余=下一项（与实际按键行为一致） */}
+        <FooterLine
+          hints={[
+            { key: 'Enter', label: active === fields.length - 1 ? '提交' : '下一项' },
+            { key: '↑↓', label: '切换' },
+            { key: 'Ctrl+U', label: '清空' },
+            { key: 'ESC', label: '取消' },
+          ]}
+          global="支持整串粘贴"
+          width={cardWidth - 4}
+        />
       </Box>
-    </Box>
+    </Panel>
   )
+  return width < 44 ? card : <Box justifyContent="center">{card}</Box>
 }

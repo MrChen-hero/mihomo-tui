@@ -148,7 +148,7 @@ function mountView(options: { afterRestart?: string; rows?: Partial<ProviderRow>
     onChanged,
     serviceDeps: deps,
   }
-  const terminal = createTerminal(<ProvidersView {...props} />)
+  const terminal = createTerminal(<ProvidersView {...props} />, { columns: props.width })
   terminals.push(terminal)
   return { props, deps, messages, terminal, onChanged }
 }

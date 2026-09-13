@@ -4,6 +4,7 @@
  */
 import { Box, Text, useInput } from 'ink'
 import { colors } from '../ui/theme.js'
+import { useKeyCapture } from '../ui/keyCapture.js'
 
 export interface ProgressDialogProps {
   title: string
@@ -47,6 +48,7 @@ export function ProgressDialog({
   onCancel,
   width = 56,
 }: ProgressDialogProps) {
+  useKeyCapture(true)
   useInput((_input, key) => {
     if (cancelable && key.escape) onCancel?.()
   })
