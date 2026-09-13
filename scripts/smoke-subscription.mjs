@@ -114,7 +114,15 @@ if (configNow !== configSnap) {
 }
 const subsNow = YAML.parse(readFileSync(SUBS_PATH, 'utf8'))
 const subsSnap = YAML.parse(readFileSync(snapSubs, 'utf8'))
-if (JSON.stringify(subsNow) !== JSON.stringify(subsSnap)) {
+// 语义比较：saveSubscriptions 会按名称排序并统一字段键序（幂等行为），
+// 文本与手写快照不同但集合相同 —— 排序 + 固定键序后再比，真正的差异仍会触发恢复
+const normSubs = (parsed) =>
+  JSON.stringify(
+    [...(parsed?.subscriptions ?? [])]
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .map((s) => ({ name: s.name, url: s.url, prefix: s.prefix ?? null })),
+  )
+if (normSubs(subsNow) !== normSubs(subsSnap)) {
   copyFileSync(snapSubs, SUBS_PATH)
   process.stdout.write('⚠️  订阅清单与快照不一致，已从快照恢复\n')
 }

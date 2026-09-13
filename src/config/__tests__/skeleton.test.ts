@@ -197,6 +197,26 @@ describe('buildSkeleton 骨架组装', () => {
     expect(warnings.some((warning) => warning.includes('NoSuchGroup'))).toBe(true)
   })
 
+  it('孤儿直连规则剥离：删除订阅后其置顶 DIRECT 规则被移除（冒烟发现）', () => {
+    const REMOVED = { name: 'removed', url: 'https://gone.example/sub?token=zzz' }
+    const { skeleton } = buildSkeleton(
+      oldConfig({
+        rules: [
+          'DOMAIN,gone.example,DIRECT', // 上一轮订阅遗留
+          'DOMAIN,a.example.com,DIRECT',
+          'DOMAIN,manual.example,DIRECT', // 手工添加的无关直连
+          'MATCH,PROXY',
+        ],
+      }),
+      [ALPHA],
+      { previousSubscriptions: [REMOVED, ALPHA] },
+    )
+    const rules = skeleton.rules as string[]
+    expect(rules).not.toContain('DOMAIN,gone.example,DIRECT')
+    expect(rules).toContain('DOMAIN,manual.example,DIRECT')
+    expect(rules[0]).toBe('DOMAIN,a.example.com,DIRECT')
+  })
+
   it('旧配置字段类型不受信任：垃圾值回退默认', () => {
     const { skeleton } = buildSkeleton(
       { 'mixed-port': 'abc', mode: 42, ipv6: 'yes' },

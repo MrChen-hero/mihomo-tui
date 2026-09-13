@@ -165,7 +165,10 @@ async function applyChange(
 
     begin('generate')
     const old = manager.loadConfig()
-    const { skeleton, warnings } = buildSkeleton(old, newSubs)
+    // oldSubs 作为「上一轮清单」传入：删除订阅时同步剥离其置顶直连规则
+    const { skeleton, warnings } = buildSkeleton(old, newSubs, {
+      previousSubscriptions: oldSubs,
+    })
     const yamlText = YAML.stringify(skeleton, { lineWidth: 0, singleQuote: true })
     finish('generate')
 

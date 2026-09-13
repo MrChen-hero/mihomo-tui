@@ -31,6 +31,11 @@ export interface SkeletonOptions {
   testUrl?: string
   /** 区域组定义，默认内置 9 组 */
   regions?: RegionDef[]
+  /**
+   * 上一轮的订阅清单。其中不再属于当前订阅的主机名，其置顶直连规则
+   * （DOMAIN,<host>,DIRECT）会被移除 —— 否则删除订阅后会残留孤儿规则。
+   */
+  previousSubscriptions?: Subscription[]
 }
 
 export type ValidateResult = { ok: true; output: string } | { ok: false; output: string }

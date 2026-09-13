@@ -252,6 +252,18 @@ describe('失败回滚（设计稿 6.1 回滚表）', () => {
     expect(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8')).toBe(originalConfigText)
     expect(subNames()).toEqual(['alpha', 'beta'])
   })
+
+  it('回归（冒烟发现）：新增后删除，配置逐字节还原', async () => {
+    const { deps } = harness()
+    await addSubscription(
+      { name: 'test-airport', url: 'https://smoke.example/sub?token=abc123', prefix: '[T] ' },
+      deps,
+    )
+    expect(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8')).not.toBe(originalConfigText)
+    await deleteSubscription('test-airport', deps)
+    // 删除订阅时它当初生成的 DOMAIN,<host>,DIRECT 规则必须一并消失
+    expect(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8')).toBe(originalConfigText)
+  })
 })
 
 describe('进度上报', () => {
