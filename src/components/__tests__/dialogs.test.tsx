@@ -126,8 +126,9 @@ describe('InputDialog 渲染与交互', () => {
     expect(text).toContain('订阅名称')
     expect(text).toContain('<my-airport>')
     expect(text).toContain('ESC 取消')
-    // cc-switch 风格：激活字段有 ❯ 标记与编辑提示行
-    expect(text).toContain('❯ 订阅名称')
+    // 槽位范式：字段标题内嵌槽位顶线（无 ❯ 前缀），非聚焦字段同样有框
+    expect(text).toContain('╭─ 订阅名称')
+    expect(text).toContain('╭─ 订阅 URL')
     expect(text).toContain('支持整串粘贴')
   })
 
@@ -353,7 +354,7 @@ describe('InputDialog 渲染与交互', () => {
     terminal.press('b') // "ab" 合法
     terminal.press(RETURN) // 前进到 url
     await delay()
-    expect(textOf(terminal.frames()).indexOf('❯ 订阅 URL')).toBeGreaterThan(-1)
+    expect(textOf(terminal.frames()).indexOf('╭─ 订阅 URL')).toBeGreaterThan(-1)
 
     terminal.press(UP) // 回到 name
     await delay()
@@ -417,8 +418,7 @@ describe('ConfirmDialog', () => {
     const onCancel = vi.fn()
     const terminal = mount(
       <ConfirmDialog
-        title="删除订阅"
-        message={['将删除：alpha', '此操作不可撤销！']}
+        message={['确认删除 alpha？', '此操作不可撤销！']}
         danger
         onConfirm={onConfirm}
         onCancel={onCancel}
@@ -426,9 +426,10 @@ describe('ConfirmDialog', () => {
     )
     await delay()
     const text = textOf(terminal.frames())
-    expect(text).toContain('删除订阅')
+    expect(text).toContain('确认删除 alpha？')
     expect(text).toContain('此操作不可撤销！')
     expect(text).toContain('y 确认')
+    expect(text).toContain('n/Esc 取消')
 
     terminal.press('n')
     await delay()
@@ -443,7 +444,7 @@ describe('ConfirmDialog', () => {
     const onConfirm = vi.fn()
     const onCancel = vi.fn()
     const terminal = mount(
-      <ConfirmDialog title="确认" message="ok?" onConfirm={onConfirm} onCancel={onCancel} />,
+      <ConfirmDialog message="ok?" onConfirm={onConfirm} onCancel={onCancel} />,
     )
     await delay()
     terminal.press(ESC)

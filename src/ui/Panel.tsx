@@ -13,7 +13,8 @@ import { displayWidth, truncateDisplay } from '../commands/output.js'
 
 export const MIN_PANEL_WIDTH = 20
 
-const TOP_PREFIX = '╭─ '
+/** 顶线前缀（╭─ ）：字段槽位（InputDialog）复用同一拼接语言 */
+export const TOP_PREFIX = '╭─ '
 /** 尾段 = 「 」空格 + 横线 ×N + 末角 ╮；横线数见 panelTopTail */
 const TAIL_FIXED = 2
 

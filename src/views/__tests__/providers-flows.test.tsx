@@ -200,7 +200,7 @@ describe('订阅流程（视图层集成）', () => {
     await delay(60)
     terminal.press('d') // 当前选中 alpha（排序第一）
     await delay(60)
-    expect(frames(terminal)).toContain('将删除订阅：alpha')
+    expect(frames(terminal)).toContain('确认删除订阅 alpha？')
     expect(frames(terminal)).toContain('此操作不可撤销！')
 
     terminal.press('n') // 先取消

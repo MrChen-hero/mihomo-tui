@@ -191,12 +191,11 @@ export function App({ config, version, mode }: AppProps) {
       ) : null}
 
       {confirmExit ? (
-        // 退出确认居中独占 body（对齐 cc-switch 确认卡片语言：居中窄卡、
-        // 取消在前）——模态期间页面内容隐藏，按键由 ConfirmDialog 独占
+        // 退出确认居中独占 body（cc-switch 确认卡片语言：键帽上置居中、
+        // 文案居中、大留白）——模态期间页面内容隐藏，按键由 ConfirmDialog 独占
         <Box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
           <ConfirmDialog
-            title="退出 mihomo-tui"
-            message={['确认退出？内核服务不受影响，仍在后台运行']}
+            message={['确认退出？', '内核服务不受影响，仍在后台运行']}
             enterConfirms
             width={Math.min(56, size.columns - 4)}
             onConfirm={exit}

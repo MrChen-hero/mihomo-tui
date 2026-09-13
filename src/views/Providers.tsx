@@ -83,7 +83,7 @@ export interface ProvidersViewProps {
 type DialogState =
   | { type: 'none' }
   | { type: 'input'; title: string; fields: InputField[]; submitLabel: string }
-  | { type: 'confirm'; title: string; message: string[]; danger: boolean }
+  | { type: 'confirm'; message: string[]; danger: boolean }
   | {
       type: 'progress'
       title: string
@@ -223,10 +223,9 @@ export function ProvidersView({
     if (!current) return
     setDialog({
       type: 'confirm',
-      title: '删除订阅',
       danger: true,
       message: [
-        `将删除订阅：${current.name}`,
+        `确认删除订阅 ${current.name}？`,
         '对应代理组将从配置中移除，缓存文件将被清理',
         'mihomo 服务将自动重启',
         '此操作不可撤销！',
@@ -361,7 +360,6 @@ export function ProvidersView({
           ) : null}
           {dialog.type === 'confirm' ? (
             <ConfirmDialog
-              title={dialog.title}
               message={dialog.message}
               danger
               onConfirm={() => {

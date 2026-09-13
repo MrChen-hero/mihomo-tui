@@ -108,18 +108,36 @@ describe('App 分级退出闸门', () => {
     term.instance.unmount()
   })
 
-  it('enterConfirms 缺省时 Enter 不确认（删除类确认保持显式 y）', async () => {
+  it('enterConfirms 缺省时 Enter 不确认（删除类确认保持显式 y）；键帽为 y/n 版', async () => {
     const { ConfirmDialog } = await import('../components/ConfirmDialog.js')
     let confirmed = 0
     const t = createTerminal(
-      <ConfirmDialog title="删除订阅" message="将删除订阅：x" onConfirm={() => { confirmed++ }} onCancel={() => {}} />,
+      <ConfirmDialog message="确认删除订阅 x？" onConfirm={() => { confirmed++ }} onCancel={() => {}} />,
     )
     terminals.push(t)
     await delay(80)
+    expect(textOf(t.frames())).toContain('y 确认')
+    expect(textOf(t.frames())).toContain('n/Esc 取消')
     t.press('\r')
     await delay(80)
     expect(confirmed).toBe(0)
     t.press('y')
+    await delay(80)
+    expect(confirmed).toBe(1)
+    t.instance.unmount()
+  })
+
+  it('enterConfirms 开启时 Enter 确认（退出确认），键帽为 Enter/Esc 版', async () => {
+    const { ConfirmDialog } = await import('../components/ConfirmDialog.js')
+    let confirmed = 0
+    const t = createTerminal(
+      <ConfirmDialog message="确认退出？" enterConfirms onConfirm={() => { confirmed++ }} onCancel={() => {}} />,
+    )
+    terminals.push(t)
+    await delay(80)
+    expect(textOf(t.frames())).toContain('Enter 确认')
+    expect(textOf(t.frames())).toContain('Esc 取消')
+    t.press('\r')
     await delay(80)
     expect(confirmed).toBe(1)
     t.instance.unmount()
@@ -130,7 +148,7 @@ describe('App 分级退出闸门', () => {
     await delay(120)
     term.press('\x1b') // 主界面 ESC：弹确认，不退出
     await delay(120)
-    expect(textOf(term.frames())).toContain('退出 mihomo-tui')
+    expect(textOf(term.frames())).toContain('确认退出？')
     term.press('\r') // Enter 确认
     await delay(250) // unmount 自身会写收尾帧，等它结束
     const settled = term.frames().length
@@ -145,7 +163,7 @@ describe('App 分级退出闸门', () => {
     await delay(120)
     term.press('\x1b') // 主界面 ESC → 确认框
     await delay(150)
-    expect(textOf(term.frames())).toContain('退出 mihomo-tui')
+    expect(textOf(term.frames())).toContain('确认退出？')
 
     const openMark = term.frames().length
     term.press('\t') // 确认期间：Tab 必须被吞（不切页）
@@ -165,7 +183,7 @@ describe('App 分级退出闸门', () => {
     const reopenMark = term.frames().length
     term.press('\x1b') // 主界面仍活着：再按 ESC 确认框再次出现
     await delay(150)
-    expect(textOf(term.frames().slice(reopenMark))).toContain('退出 mihomo-tui')
+    expect(textOf(term.frames().slice(reopenMark))).toContain('确认退出？')
     term.instance.unmount()
   })
 })

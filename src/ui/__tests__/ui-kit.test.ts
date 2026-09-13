@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { colors, styles, toneColor } from '../theme.js'
 import { MIN_PANEL_WIDTH, panelTopLine, panelTopParts } from '../Panel.js'
 import { fitFooterHints, footerWidth, type FooterHint } from '../FooterLine.js'
-import { statusText, tabCells, tabRowText, topBarGap } from '../TopBar.js'
+import { statusText, TAB_CELL_CAP, tabCells, tabRowText, topBarGap } from '../TopBar.js'
 import { displayWidth } from '../../commands/output.js'
 
 describe('theme 终端绿配色', () => {
@@ -78,25 +78,27 @@ describe('panelTopLine 内嵌标题边框行', () => {
 describe('tabCells 标签均布', () => {
   const TABS = ['节点', '订阅', '日志', '连接']
 
-  it('均分格宽且标签在格内居中', () => {
+  it('格宽封顶 TAB_CELL_CAP，标签在格内居中', () => {
     const cells = tabCells(TABS, 0, 100)
     expect(cells).not.toBeNull()
-    for (const c of cells!) expect(displayWidth(c.text)).toBe(25)
-    // 选中格标签 '❯ 1 节点' 显示宽 8，pad 17，左 8 右 9
-    expect(cells![0]!.text.startsWith(' '.repeat(8) + '❯ 1 节点')).toBe(true)
-    expect(cells![0]!.text.endsWith(' '.repeat(9))).toBe(true)
+    // floor(100/4)=25 超上限 → 封顶 16
+    for (const c of cells!) expect(displayWidth(c.text)).toBe(TAB_CELL_CAP)
+    // 选中格标签 '❯ 1 节点' 显示宽 8，pad 8，左 4 右 4
+    expect(cells![0]!.text.startsWith(' '.repeat(4) + '❯ 1 节点')).toBe(true)
+    expect(cells![0]!.text.endsWith(' '.repeat(4))).toBe(true)
     expect(cells![0]!.active).toBe(true)
     expect(cells![1]!.active).toBe(false)
   })
 
-  it('标签数量增减自适应格宽（3 个与 5 个）', () => {
-    const three = tabCells(TABS.slice(0, 3), 1, 90)
+  it('标签数量增减自适应格宽：超过上限封顶，低于上限按均分', () => {
+    // 3 个标签 42 列：floor(14) < CAP → 格宽 14（自适应仍在）
+    const three = tabCells(TABS.slice(0, 3), 1, 42)
     expect(three).not.toBeNull()
-    for (const c of three!) expect(displayWidth(c.text)).toBe(30)
-    // 未来顶栏加标签：5 个标签在 100 列自动重算为 20 列格宽
+    for (const c of three!) expect(displayWidth(c.text)).toBe(14)
+    // 未来顶栏加标签：5 个标签在 100 列自动重算为 16（封顶）
     const five = tabCells([...TABS, '设置'], 4, 100)
     expect(five).not.toBeNull()
-    for (const c of five!) expect(displayWidth(c.text)).toBe(20)
+    for (const c of five!) expect(displayWidth(c.text)).toBe(TAB_CELL_CAP)
   })
 
   it('格宽装不下最宽标签时返回 null（回退紧凑布局）', () => {
@@ -106,6 +108,17 @@ describe('tabCells 标签均布', () => {
 
   it('空标签表返回 null（守卫除零，走紧凑回退）', () => {
     expect(tabCells([], 0, 100)).toBeNull()
+  })
+
+  it('标签块居中：块外留白分两侧且和 = 剩余列', () => {
+    // TopBar 渲染逻辑的镜像计算：4 标签封顶格宽 → 块宽 64，avail 92 → 两侧各 14
+    const cells = tabCells(TABS, 0, 92)!
+    const blockWidth = cells.length * TAB_CELL_CAP
+    const extra = 92 - blockWidth
+    expect(blockWidth).toBe(TABS.length * TAB_CELL_CAP)
+    expect(extra).toBe(28)
+    expect(Math.floor(extra / 2)).toBe(14)
+    expect(extra - Math.floor(extra / 2)).toBe(14)
   })
 })
 

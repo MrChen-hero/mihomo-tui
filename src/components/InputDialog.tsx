@@ -20,8 +20,8 @@
  */
 import { Box, Text, useInput, usePaste } from 'ink'
 import { FooterLine } from '../ui/FooterLine.js'
-import { Panel } from '../ui/Panel.js'
-import { colors, styles } from '../ui/theme.js'
+import { MIN_PANEL_WIDTH, Panel, TOP_PREFIX, panelTopParts } from '../ui/Panel.js'
+import { colors } from '../ui/theme.js'
 import { useRef, useState, type ReactNode } from 'react'
 import { displayWidth } from '../commands/output.js'
 import { useKeyCapture } from '../ui/keyCapture.js'
@@ -274,7 +274,8 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   // 居中窄卡片（spec 2026-09-13 §5.3）：min(64, max(44, width-8))；
   // 终端窄于 44 列时退化为全宽（无居中），保可用性
   const cardWidth = width < 44 ? width : Math.min(64, Math.max(44, width - 8))
-  // 输入盒内可用列：Panel 边框 2 + Panel paddingX 2 + 输入盒边框 2 + 输入盒 paddingX 2
+  // 字段槽位宽：卡片 Panel 边框 2 + paddingX 2；输入盒内可用列再减槽位边框 2 + paddingX 2
+  const slotWidth = Math.max(0, cardWidth - 4)
   const innerWidth = Math.max(10, cardWidth - 8)
 
   // 校验错误集中展示：优先当前字段，其次第一个出错字段（替代逐字段错误行）
@@ -284,22 +285,12 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     shownError = (activeField && errors[activeField.key]) || fields.map((f) => errors[f.key]).find(Boolean)
   }
 
-  const renderValue = (field: InputField, value: string, isActive: boolean): ReactNode => {
-    if (field.readOnly) {
-      return (
-        <Text dimColor>
-          {value || '—'}
-          {`（只读）`}
-        </Text>
-      )
-    }
+  const renderSlotContent = (field: InputField, value: string, isActive: boolean): ReactNode => {
     if (!isActive) {
       const display = field.secret ? '*'.repeat(value.length) : value
       return <Text dimColor>{display || (field.placeholder ? `<${field.placeholder}>` : '—')}</Text>
     }
     const display = field.secret ? '*'.repeat(value.length) : value
-    const error = errors[field.key]
-    const invalid = tried && error !== undefined
     const windowed = value
       ? inputWindow(display, Math.min(cursorRef.current, [...display].length), innerWidth)
       : { text: '', cursorOffset: 0 }
@@ -308,23 +299,66 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     const before = value ? windowChars.slice(0, windowed.cursorOffset).join('') : ''
     const after = value ? windowChars.slice(windowed.cursorOffset + 1).join('') : ''
     return (
-      <Box
-        borderStyle="round"
-        borderColor={invalid ? colors.danger : colors.accent}
-        paddingX={1}
-        width="100%"
-      >
+      <Text>
         {value ? (
-          <Text>
+          <>
             {before}
             <Text inverse>{at}</Text>
             {after}
-          </Text>
+          </>
         ) : (
-          <Text>
+          <>
             <Text inverse>{' '}</Text>
             {field.placeholder ? <Text dimColor>{` <${field.placeholder}>`}</Text> : null}
-          </Text>
+          </>
+        )}
+      </Text>
+    )
+  }
+
+  /** 字段槽位（spec 2026-09-13 dialogs-topbar-polish §3.2）：恒 3 行的内嵌标题
+   * mini-Panel。聚焦 accent 亮起（invalid 转 danger），非聚焦/readOnly 退后为
+   * surfaceBorder + dim。顶线复用 panelTopParts 的截断/宽度逻辑。 */
+  const renderSlot = (field: InputField, value: string, index: number): ReactNode => {
+    const isActive = index === active && !field.readOnly
+    const invalid = tried && isActive && errors[field.key] !== undefined
+    const borderColor = invalid ? colors.danger : isActive ? colors.accent : colors.surfaceBorder
+    const labelStyle = invalid
+      ? { color: colors.danger, bold: true }
+      : isActive
+        ? { color: colors.accent, bold: true }
+        : { color: colors.muted }
+    const label = field.readOnly ? `${field.label}（只读）` : field.label
+    const fullTitle = field.required ? `${label} *` : label
+    const parts = panelTopParts(fullTitle, slotWidth)
+    // required 的 * 单独 danger 色；标题被截断（以 … 结尾）时整段按 labelStyle 渲染
+    const starSuffix = field.required && parts.title.endsWith(' *')
+    const labelShown = starSuffix ? parts.title.replace(/ \*$/, '') : parts.title
+    return (
+      <Box key={field.key} flexDirection="column" marginTop={index > 0 ? 1 : undefined} width={slotWidth}>
+        {slotWidth < MIN_PANEL_WIDTH ? (
+          <>
+            <Text {...labelStyle}>{fullTitle}</Text>
+            {renderSlotContent(field, value, isActive)}
+          </>
+        ) : (
+          <>
+            <Text>
+              <Text color={borderColor}>{TOP_PREFIX}</Text>
+              <Text {...labelStyle}>{labelShown}</Text>
+              {starSuffix ? <Text color={colors.danger}>{' *'}</Text> : null}
+              <Text color={borderColor}>{parts.tail}</Text>
+            </Text>
+            <Box
+              flexDirection="column"
+              borderStyle="round"
+              borderTop={false}
+              borderColor={borderColor}
+              paddingX={1}
+            >
+              {renderSlotContent(field, value, isActive)}
+            </Box>
+          </>
         )}
       </Box>
     )
@@ -332,27 +366,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
 
   const card = (
     <Panel title={`◆ ${title}`} width={cardWidth}>
-      {fields.map((field, index) => {
-        const value = values[field.key] ?? ''
-        const isActive = index === active
-        return (
-          <Box key={field.key} flexDirection="column">
-            {isActive ? (
-              <Text>
-                <Text {...styles.keyCap}>{`❯ ${field.label}`}</Text>
-                {field.required ? <Text color={colors.danger}>{' *'}</Text> : null}
-                {field.readOnly ? <Text dimColor>{'（只读）'}</Text> : null}
-              </Text>
-            ) : (
-              <Text>
-                <Text dimColor>{`  ${field.label}`}</Text>
-                {field.required ? <Text color={colors.danger}>{' *'}</Text> : null}
-              </Text>
-            )}
-            {renderValue(field, value, isActive)}
-          </Box>
-        )
-      })}
+      {fields.map((field, index) => renderSlot(field, values[field.key] ?? '', index))}
       <Box marginTop={1} flexDirection="column">
         {shownError ? <Text color={colors.danger}>{`⚠ ${shownError}`}</Text> : null}
         {/* Enter 文案随位置切换：末项=提交，其余=下一项（与实际按键行为一致） */}
