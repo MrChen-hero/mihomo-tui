@@ -392,7 +392,14 @@ export function ProvidersView({
         </Box>
       ) : (
         <>
-          <Panel title={`订阅 · ${rows.length}`} width={width}>
+          {/* 非展开且无错误盒时主列表撑满到页脚（对齐日志/连接页的底框贴底）；
+              row 包裹层让交叉轴 stretch 拉伸 Panel，fillHeight 随之生效 */}
+          <Box flexDirection="row" flexGrow={expanded || current?.error ? undefined : 1}>
+            <Panel
+              title={`订阅 · ${rows.length}`}
+              width={width}
+              fillHeight={!(expanded || current?.error)}
+            >
             <Text {...styles.tableHeader}>
               {padDisplay('NAME', 14)}
               {padDisplay('NODES', 12)}
@@ -438,7 +445,8 @@ export function ProvidersView({
                 )
               }}
             />
-          </Panel>
+            </Panel>
+          </Box>
 
           {/* 更新失败是常态（域名失效、经代理 403），错误必须完整展示 */}
           {current?.error ? (
