@@ -7,6 +7,7 @@
  * 语义（颜色承载含义而非装饰）：
  *   accent 焦点/交互 · success 健康 · warning 注意 · danger 错误 · info 信息
  *   muted 次要/未知（关闭或未知是合法中性态，不用红） · surfaceBorder 边框
+ *   onSolid 实底徽标前景（黑色，保证 256 色终端对比度）
  *
  * 角色样式供 <Text {...styles.xxx}> 展开；换主题只改本文件。
  */
@@ -18,6 +19,7 @@ export const colors = {
   info: 'ansi256(73)', // #5fafaf 青碧
   muted: 'ansi256(244)', // #808080 中灰
   surfaceBorder: 'ansi256(238)', // #444444 暗灰
+  onSolid: 'ansi256(0)', // #000000 黑色（实底徽标前景）
 } as const
 
 export type ColorToken = keyof typeof colors
@@ -41,4 +43,12 @@ export const toneColor: Record<Tone, string> = {
   positive: colors.success,
   caution: colors.warning,
   negative: colors.danger,
+}
+
+/** 实底徽标背景色映射（供 StatusChip solid 形态使用） */
+export const toneBg: Record<Tone, string> = {
+  neutral: 'ansi256(244)', // 灰底
+  positive: 'ansi256(34)', // 绿底
+  caution: 'ansi256(226)', // 黄底
+  negative: 'ansi256(196)', // 红底
 }

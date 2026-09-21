@@ -203,7 +203,10 @@ program.action(async () => {
 
   const { render } = await import('ink')
   const { App } = await import('./App.js')
-  const instance = render(<App config={config} version={version} mode={mode} />)
+  const instance = render(<App config={config} version={version} mode={mode} />, {
+    // 使用备用屏幕：TUI 运行在独立屏幕，退出后恢复到进入前的终端状态（类似 vim/htop）
+    alternateScreen: true,
+  })
   await instance.waitUntilExit()
   // mihomo 不回 WebSocket close 帧，句柄不释放 → 必须显式退出（SPEC 3.6）
   await exitAfterFlush(EXIT.ok)

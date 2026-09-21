@@ -98,10 +98,6 @@ export function App({ config, version, mode }: AppProps) {
       return
     }
     // 日志页在编辑过滤词时会吞掉普通按键，这里只处理明确的全局键
-    if (input >= '1' && input <= '5') {
-      setTab(Number(input) - 1)
-      return
-    }
     if (key.tab) {
       setTab((t) => (t + 1) % TABS.length)
       return
@@ -113,6 +109,14 @@ export function App({ config, version, mode }: AppProps) {
     }
     if (input === ']') {
       setTab((t) => (t + 1) % TABS.length)
+      return
+    }
+    // 数字键 1-5 直接切换到对应标签（1=节点, 2=订阅, 3=日志, 4=连接, 5=设置）
+    if (input >= '1' && input <= '5') {
+      const index = parseInt(input, 10) - 1
+      if (index < TABS.length) {
+        setTab(index)
+      }
       return
     }
     if (key.escape) {
@@ -174,8 +178,8 @@ export function App({ config, version, mode }: AppProps) {
         ) : (
           <FooterLine
             hints={[
-              { key: 'Tab/[]', label: '循环' },
-              { key: 'M', label: '切换模式' },
+              { key: 'Tab/[]', label: '切换' },
+              { key: 'M', label: '切模式' },
               { key: 'ESC', label: '退出' },
             ]}
             width={size.columns - 2}

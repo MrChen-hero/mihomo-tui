@@ -739,11 +739,11 @@ export function SettingsView({
     { isActive: active && !dialog },
   )
 
-  // 双栏宽度（复用节点页机制）：左栏导航容纳最长标签+值缩写，右栏=余量-2
-  // （两栏之和比终端窄 2 列：恰好铺满时真实 TTY 会把右边框挤出折行，节点页同款规避）
+  // 双栏宽度（复用节点页机制）：左栏导航容纳最长标签+值缩写，右栏=余量
+  // 确保双栏总宽与 TopBar 对齐
   const narrow = width < 100
   const navWidth = narrow ? width : Math.min(34, Math.floor(width * 0.34))
-  const panelWidth = narrow ? width : width - navWidth - 2
+  const panelWidth = narrow ? width : width - navWidth
   // 矮终端（80×24 的 body 仅 18 行）去掉区块间空行，保证面板完整可见
   const spacious = height >= 20
 
@@ -847,6 +847,7 @@ export function SettingsView({
     }
     return (
       <Box flexDirection="column">
+        <Box height={1} />
         {currentPanelLines.map((line, index) => {
           const isCursor = focus === 'panel' && line.editable && index === panelCursor
           const bar = isCursor ? '▌' : ' '

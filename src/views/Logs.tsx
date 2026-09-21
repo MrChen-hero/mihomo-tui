@@ -115,7 +115,7 @@ export function LogsView({
       {/* row 容器让纵轴变交叉轴（默认 stretch）拉伸 Panel——column 直下
         内层 flexGrow 是空操作（Proxies 窄屏同款机制） */}
       <Box flexDirection="row" flexGrow={1}>
-      <Panel title={`日志 · ${level}`} fillHeight width={width}>
+      <Panel title={`日志 · ${level} · 缓冲 ${entries.length}/${logs.entries.length}`} fillHeight width={width}>
         <Text {...styles.tableHeader}>
           {logs.paused ? <Text color={colors.warning}>{'⏸ 已暂停（Space 继续） · '}</Text> : null}
           {filter || editing ? (

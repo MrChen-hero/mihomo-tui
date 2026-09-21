@@ -222,9 +222,8 @@ export function ProxiesView({
   // 窄屏降级为单栏：只显示当前焦点那个面板
   const narrow = width < 100
   const groupPanelWidth = narrow ? width : Math.min(32, Math.floor(width * 0.3))
-  // 两栏之和比终端窄 2 列：恰好铺满时 ink 在真实 TTY 下会把行宽多舍入 2 列，
-  // 右边框被挤出屏外折行，进而把终端滚乱（宽屏 pty 实测；无头环境不复现）。
-  const nodePanelWidth = narrow ? width : width - groupPanelWidth - 2
+  // 右栏宽度 = 总宽度 - 左栏宽度，确保双栏总宽与 TopBar 对齐
+  const nodePanelWidth = narrow ? width : width - groupPanelWidth
   // 内容宽 = 面板宽 - 左右边框 2 - paddingX 2；组行额外让位给计数列。
   // 额外留 2 列 emoji 余量：国旗 emoji 的显示宽随终端在 2~4 列间浮动
   // （本项目的 displayWidth 按 2 计），行内容一旦顶到边框就会折行撑爆面板。
@@ -246,8 +245,9 @@ export function ProxiesView({
   // 保证标题里即便有宽理解分歧的 emoji 也不会把顶线挤折行。
   const title = truncateDisplay(rawTitle, Math.max(1, nodePanelWidth - 9))
 
+  const groupTitle = `代理组 · ${visibleGroups.length}`
   const groupPanel = (
-    <Panel title="代理组" width={groupPanelWidth} fillHeight>
+    <Panel title={groupTitle} width={groupPanelWidth} fillHeight>
       <ScrollList
         items={visibleGroups}
         selected={groupIndex}

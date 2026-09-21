@@ -83,19 +83,23 @@ describe('tabCells 标签均布', () => {
     expect(cells).not.toBeNull()
     // floor(100/4)=25 超上限 → 封顶 16
     for (const c of cells!) expect(displayWidth(c.text)).toBe(TAB_CELL_CAP)
-    // 选中格标签 '❯ 1 节点' 显示宽 8，pad 8，左 4 右 4
-    expect(cells![0]!.text.startsWith(' '.repeat(4) + '❯ 1 节点')).toBe(true)
-    expect(cells![0]!.text.endsWith(' '.repeat(4))).toBe(true)
+    // 选中格标签 '节点' 显示宽 4，pad 8，左 4 右 4
+    expect(cells![0]!.text.trim()).toBe('节点')
+    const text0 = cells![0]!.text
+    const leadingSpaces = text0.length - text0.trimStart().length
+    const trailingSpaces = text0.length - text0.trimEnd().length
+    expect(leadingSpaces).toBeGreaterThanOrEqual(3)
+    expect(trailingSpaces).toBeGreaterThanOrEqual(3)
     expect(cells![0]!.active).toBe(true)
     expect(cells![1]!.active).toBe(false)
   })
 
   it('标签数量增减自适应格宽：超过上限封顶，低于上限按均分', () => {
-    // 3 个标签 42 列：floor(14) < CAP → 格宽 14（自适应仍在）
+    // 3 个标签 42 列：floor(14) > CAP → 格宽封顶 10
     const three = tabCells(TABS.slice(0, 3), 1, 42)
     expect(three).not.toBeNull()
-    for (const c of three!) expect(displayWidth(c.text)).toBe(14)
-    // 未来顶栏加标签：5 个标签在 100 列自动重算为 16（封顶）
+    for (const c of three!) expect(displayWidth(c.text)).toBe(TAB_CELL_CAP)
+    // 未来顶栏加标签：5 个标签在 100 列自动重算为 10（封顶）
     const five = tabCells([...TABS, '设置'], 4, 100)
     expect(five).not.toBeNull()
     for (const c of five!) expect(displayWidth(c.text)).toBe(TAB_CELL_CAP)
@@ -111,25 +115,23 @@ describe('tabCells 标签均布', () => {
   })
 
   it('标签块居中：块外留白分两侧且和 = 剩余列', () => {
-    // TopBar 渲染逻辑的镜像计算：4 标签封顶格宽 → 块宽 64，avail 92 → 两侧各 14
+    // TopBar 渲染逻辑的镜像计算：4 标签封顶格宽 12 → 块宽 48，avail 92 → 两侧各 22
     const cells = tabCells(TABS, 0, 92)!
     const blockWidth = cells.length * TAB_CELL_CAP
     const extra = 92 - blockWidth
     expect(blockWidth).toBe(TABS.length * TAB_CELL_CAP)
-    expect(extra).toBe(28)
-    expect(Math.floor(extra / 2)).toBe(14)
-    expect(extra - Math.floor(extra / 2)).toBe(14)
+    expect(extra).toBe(44)
+    expect(Math.floor(extra / 2)).toBe(22)
+    expect(extra - Math.floor(extra / 2)).toBe(22)
   })
 })
 
 describe('TopBar 顶栏纯函数', () => {
   const tabs = ['节点', '订阅', '日志', '连接'] as const
 
-  it('tabRowText：选中带 ❯ 前缀，非选中缩进，两空格分隔', () => {
+  it('tabRowText：无数字，2 空格分隔', () => {
     const row = tabRowText(tabs, 0)
-    expect(row.startsWith('❯ 1 节点')).toBe(true)
-    expect(row).toContain('  2 订阅')
-    expect(row).not.toContain('❯ 2')
+    expect(row).toBe('节点  订阅  日志  连接')
   })
 
   it('statusText：模式 · 端口 + 状态点', () => {

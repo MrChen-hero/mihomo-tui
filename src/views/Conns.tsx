@@ -120,11 +120,15 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
   const narrow = width < 100
   const hostWidth = narrow ? Math.max(18, width - 34) : Math.max(24, Math.floor(width * 0.32))
 
+  // 将统计信息放入标题：连接 · 计数 · 累计流量 · 排序
+  const sortLabel = sort === 'traffic' ? '流量' : sort === 'time' ? '时间' : '主机'
+  const title = `连接 · ${conns.length} · 累计 ↑${formatBytes(data?.uploadTotal ?? 0)} ↓${formatBytes(data?.downloadTotal ?? 0)} · 排序：${sortLabel}`
+
   return (
     <Box flexDirection="column" flexGrow={1}>
       {/* row 容器让纵轴变交叉轴拉伸 Panel（Proxies 同款机制） */}
       <Box flexDirection="row" flexGrow={1}>
-      <Panel title={`连接 · ${conns.length}`} fillHeight width={width}>
+      <Panel title={title} fillHeight width={width}>
       <Text {...styles.tableHeader}>
         {' '}
         {padDisplay('HOST', hostWidth - 1)}
@@ -159,11 +163,7 @@ export function ConnsView({ config, data, height, width, active, onMessage }: Co
         <Panel danger title={`确认关闭全部 ${conns.length} 条连接？`} width={width}>
           <Text color={colors.danger}>按 y 确认，其他键取消</Text>
         </Panel>
-      ) : (
-        <Text dimColor>
-          {` 共 ${conns.length} 条  累计 ↑${formatBytes(data?.uploadTotal ?? 0)} ↓${formatBytes(data?.downloadTotal ?? 0)}  排序：${sort}`}
-        </Text>
-      )}
+      ) : null}
       <Box paddingLeft={1}>
         <FooterLine hints={HINTS} width={width - 2} />
       </Box>

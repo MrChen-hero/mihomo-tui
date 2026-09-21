@@ -1,13 +1,16 @@
 /** 底部状态栏：内核版本、实时流量、内存、连接状态（配色全部来自 theme）。
  *
- * 窄宽降级：内容按 columns 分级显示，避免折行把布局顶出一行——
- * <100 列隐藏累计流量、<80 列再隐藏内存段（瞬时速率与连接状态永远保留）。
+ * 响应式降级（2026-09-22 标准化美化）：
+ * - Full（≥100列）：完整指标（版本、模式、瞬时、累计、内存、连接状态）
+ * - Compact（72~99列）：精简指标（版本、模式、瞬时、连接状态；隐藏累计与内存）
+ * - TooSmall（<72列）：不渲染状态栏（由 TopBar 显示降级提示）
  */
 import { Box, Text, useStdout } from 'ink'
 import { formatBytes } from '../commands/output.js'
 import type { StreamState } from '../api/stream.js'
 import { StatusChip } from '../ui/StatusDot.js'
 import { colors, type Tone } from '../ui/theme.js'
+import { classifySize } from '../ui/layout.js'
 
 export interface StatusBarProps {
   version: string | undefined
@@ -51,8 +54,15 @@ export function stateLabel(state: StreamState, nodeName: string): string {
 export function StatusBar(props: StatusBarProps) {
   const { stdout } = useStdout()
   const columns = stdout?.columns ?? 80
-  const showTotals = columns >= 100
-  const showMem = columns >= 80
+  const sizeClass = classifySize(columns)
+
+  // TooSmall 时不渲染状态栏（TopBar 已显示降级提示）
+  if (sizeClass === 'TooSmall') {
+    return null
+  }
+
+  const showTotals = sizeClass === 'Full'
+  const showMem = sizeClass === 'Full'
   const tone = stateTone(props.state)
   const modeNames: Record<string, string> = {
     rule: '规则',
@@ -60,6 +70,7 @@ export function StatusBar(props: StatusBarProps) {
     direct: '直连'
   }
   const modeDisplay = props.mode ? modeNames[props.mode] ?? props.mode : '?'
+
   return (
     <Box
       borderStyle="single"
@@ -72,7 +83,7 @@ export function StatusBar(props: StatusBarProps) {
     >
       <Text>
         <Text color={colors.muted}>{`mihomo ${props.version ?? '?'} │ ${modeDisplay} │ `}</Text>
-        {/* 瞬时速率是健康信号（绿）；累计量与内存是次要信息（灰，窄宽时先隐藏） */}
+        {/* 瞬时速率是健康信号（绿）；累计量与内存是次要信息（灰，Compact 时隐藏） */}
         <Text color={colors.success}>↑{formatBytes(props.up)}/s</Text>
         <Text> </Text>
         <Text color={colors.success}>↓{formatBytes(props.down)}/s</Text>
@@ -83,7 +94,7 @@ export function StatusBar(props: StatusBarProps) {
         ) : null}
         {showMem ? <Text color={colors.muted}>{` │ mem ${formatBytes(props.memory)}`}</Text> : null}
         <Text color={colors.muted}>{' │ '}</Text>
-        <StatusChip tone={tone}>{stateLabel(props.state, columns >= 100 ? props.currentNode : '')}</StatusChip>
+        <StatusChip tone={tone}>{stateLabel(props.state, sizeClass === 'Full' ? props.currentNode : '')}</StatusChip>
       </Text>
     </Box>
   )
