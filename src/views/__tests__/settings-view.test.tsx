@@ -110,7 +110,8 @@ function mountView(options: { height?: number } = {}): Terminal {
     configPath: join(root, 'config.json'),
     kernelsDir: join(root, 'kernels'),
   }
-  const terminal = createTerminal(<SettingsView {...props} />)
+  // 终端列数与 width 一致：双栏布局按 width 排两块 Panel，终端窄于 width 会被 ink 裁切
+  const terminal = createTerminal(<SettingsView {...props} />, { columns: 110, rows: options.height ?? 28 })
   terminals.push(terminal)
   return terminal
 }
@@ -131,8 +132,8 @@ describe('SettingsView 渲染', () => {
     expect(text).toContain('DNS 接管')
     expect(text).toContain('mihomo 内核')
     // 骨架默认：allow-lan 关、ipv6 开
-    expect(text).toContain('❯ 混合端口')
-    expect(text).not.toContain('❯ 外部控制')
+    expect(text).toContain('▌ 混合端口')
+    expect(text).not.toContain('▌ 外部控制')
   })
 
   it('光标移动：DNS 接管 → 可用更新（可重试）→ 切换版本，只读行仍跳过', async () => {
@@ -140,17 +141,17 @@ describe('SettingsView 渲染', () => {
     await delay()
     for (let i = 0; i < 6; i += 1) terminal.press(DOWN)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ DNS 接管')
+    expect(textOf(terminal.frames())).toContain('▌ DNS 接管')
     terminal.press(DOWN)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ 可用更新')
+    expect(textOf(terminal.frames())).toContain('▌ 可用更新')
     terminal.press(DOWN)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ 切换版本')
+    expect(textOf(terminal.frames())).toContain('▌ 切换版本')
     // 只读行不落光标：继续向下直达下载源，不经过当前版本
     terminal.press(DOWN)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ 下载源')
+    expect(textOf(terminal.frames())).toContain('▌ 下载源')
   })
 
   it('80×24 档（body 18 行）卡片完整渲染不丢行', async () => {
@@ -183,7 +184,7 @@ describe('SettingsView 修改流', () => {
     expect(messages).toContain('设置已应用，服务已重启')
     const tail = textOf(terminal.frames().slice(mark))
     expect(tail).not.toContain('允许局域网：关 → 开')
-    expect(tail).toContain('❯ 允许局域网')
+    expect(tail).toContain('▌ 允许局域网')
   })
 
   it('端口修改：输入框校验、ESC 取消不动文件、合法值走确认', async () => {
@@ -195,7 +196,7 @@ describe('SettingsView 修改流', () => {
     // ESC 取消
     terminal.press(ESC)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ 混合端口')
+    expect(textOf(terminal.frames())).toContain('▌ 混合端口')
     expect(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8')).not.toContain('18080')
 
     // 再开，Ctrl+U 清空预填值后输入合法端口
@@ -244,7 +245,7 @@ describe('SettingsView 修改流', () => {
     await delay()
     terminal.press(ESC)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ 允许局域网')
+    expect(textOf(terminal.frames())).toContain('▌ 允许局域网')
     expect(configYaml()['allow-lan']).toBe(false)
     expect(messages).toEqual([])
   })
@@ -334,7 +335,7 @@ describe('SettingsView 内核区块', () => {
     // ESC 取消回到卡片页
     terminal.press(ESC)
     await delay()
-    expect(textOf(terminal.frames())).toContain('❯ 切换版本')
+    expect(textOf(terminal.frames())).toContain('▌ 切换版本')
   })
 
   it('完整安装流：确认后下载→校验→替换→重启→提示成功', async () => {
@@ -402,7 +403,7 @@ describe('SettingsView CP3 修复回归', () => {
     // 回到卡片页，从未出现安装确认
     const text = textOf(terminal.frames())
     expect(text).not.toContain('切换内核：v1.19.24 → v1.19.24')
-    expect(text).toContain('❯ 切换版本')
+    expect(text).toContain('▌ 切换版本')
   })
 
   it('可用更新行 Enter 强制重查：失败 → 成功后显示可更新', async () => {

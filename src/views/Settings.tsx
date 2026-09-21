@@ -93,21 +93,109 @@ interface RowDef {
   label: string
   editable: boolean
   section: '基础设置' | 'mihomo 内核'
+  /** 右栏「说明」行 */
+  description?: string
+  /** 右栏「取值」行（合法范围/可选值/开关枚举） */
+  constraint?: string
+  /** 右栏「影响」行（缺省时基础设置可编辑项用 IMPACT） */
+  impact?: string
 }
 
 const ROWS: RowDef[] = [
-  { key: 'port', label: '混合端口', editable: true, section: '基础设置' },
-  { key: 'allowLan', label: '允许局域网', editable: true, section: '基础设置' },
-  { key: 'ipv6', label: 'IPv6', editable: true, section: '基础设置' },
-  { key: 'unifiedDelay', label: '统一延迟', editable: true, section: '基础设置' },
-  { key: 'tcpConcurrent', label: 'TCP 并发', editable: true, section: '基础设置' },
-  { key: 'logLevel', label: '日志级别', editable: true, section: '基础设置' },
-  { key: 'dns', label: 'DNS 接管', editable: true, section: '基础设置' },
-  { key: 'controller', label: '外部控制', editable: false, section: '基础设置' },
-  { key: 'version', label: '当前版本', editable: false, section: 'mihomo 内核' },
-  { key: 'update', label: '可用更新', editable: true, section: 'mihomo 内核' },
-  { key: 'switch', label: '切换版本', editable: true, section: 'mihomo 内核' },
-  { key: 'source', label: '下载源', editable: true, section: 'mihomo 内核' },
+  {
+    key: 'port',
+    label: '混合端口',
+    editable: true,
+    section: '基础设置',
+    description: 'HTTP/SOCKS 混合代理监听端口',
+    constraint: '1024 – 65535',
+  },
+  {
+    key: 'allowLan',
+    label: '允许局域网',
+    editable: true,
+    section: '基础设置',
+    description: '允许局域网内其他设备经本机代理',
+    constraint: '开 / 关',
+  },
+  {
+    key: 'ipv6',
+    label: 'IPv6',
+    editable: true,
+    section: '基础设置',
+    description: '是否启用 IPv6 解析与出站',
+    constraint: '开 / 关',
+  },
+  {
+    key: 'unifiedDelay',
+    label: '统一延迟',
+    editable: true,
+    section: '基础设置',
+    description: '测速时去除节点固定延迟差，便于横向比较',
+    constraint: '开 / 关',
+  },
+  {
+    key: 'tcpConcurrent',
+    label: 'TCP 并发',
+    editable: true,
+    section: '基础设置',
+    description: '建立连接时并发探测多个地址，取最快者',
+    constraint: '开 / 关',
+  },
+  {
+    key: 'logLevel',
+    label: '日志级别',
+    editable: true,
+    section: '基础设置',
+    description: '内核日志输出级别，对应日志页可过滤',
+    constraint: LOG_LEVELS.join(' / '),
+  },
+  {
+    key: 'dns',
+    label: 'DNS 接管',
+    editable: true,
+    section: '基础设置',
+    description: '由内核接管系统 DNS 解析（fake-ip / 防污染）',
+    constraint: '开 / 关',
+  },
+  {
+    key: 'controller',
+    label: '外部控制',
+    editable: false,
+    section: '基础设置',
+    description: 'External Controller 地址，本工具经它读写内核',
+  },
+  {
+    key: 'version',
+    label: '当前版本',
+    editable: false,
+    section: 'mihomo 内核',
+    description: '正在运行的 mihomo 内核版本（只读）',
+  },
+  {
+    key: 'update',
+    label: '可用更新',
+    editable: true,
+    section: 'mihomo 内核',
+    description: '检查是否有更新的稳定版内核，Enter 重新检查',
+    impact: '仅联网查询，不修改系统',
+  },
+  {
+    key: 'switch',
+    label: '切换版本',
+    editable: true,
+    section: 'mihomo 内核',
+    description: '下载并切换到指定内核版本，失败自动回滚',
+    impact: '下载 → 校验 → 替换二进制 → 重启服务',
+  },
+  {
+    key: 'source',
+    label: '下载源',
+    editable: true,
+    section: 'mihomo 内核',
+    description: '内核与 release 信息的下载镜像源',
+    impact: '仅影响后续下载，不重启服务',
+  },
 ]
 
 const ACTIONABLE: RowKey[] = ROWS.filter((row) => row.editable).map((row) => row.key)
@@ -125,6 +213,48 @@ const TOGGLES: Partial<
 
 /** 确认文案的影响行（所有基础设置修改共用） */
 const IMPACT = '将写入 config.yaml 并重启服务，活动连接会瞬断数秒'
+
+/** 右栏配置行：标签 + 内容 + 着色 + 是否可点改（editable=false 的行不可选） */
+export interface PanelLine {
+  /** 行标签（当前值/说明/取值/影响） */
+  label: string
+  text: string
+  /** 内容着色（当前值用语义色，说明/取值/影响 dim） */
+  color?: string
+  /** 说明行：斜体 + dim（层次弱化，终端无字号概念） */
+  italic?: boolean
+  /** 是否可被选中并按 Enter 修改 */
+  editable: boolean
+}
+
+/** 右栏配置行标签列宽（当前值/说明/取值/影响，CJK 各 6 显示列，+1 空格 = 7） */
+const PANEL_LABEL_COL = 7
+
+/**
+ * 把一项设置收敛为右栏配置行列表（纯函数，可测）。
+ * 行序固定：当前值 → 说明 → 取值 → 影响；缺省字段省略。
+ * 可操作项（editable）所有行都可点改；只读项各行 editable=false。
+ * 影响段：行定制 impact 优先，基础设置可编辑项回退 IMPACT，只读项无影响行。
+ */
+export function panelLines(
+  row: RowDef,
+  value: { text: string; color?: string },
+): PanelLine[] {
+  const lines: PanelLine[] = []
+  // 当前值行恒存在
+  lines.push({ label: '当前值', text: value.text, color: value.color, editable: row.editable })
+  if (row.description) {
+    lines.push({ label: '说明', text: row.description, color: colors.muted, italic: true, editable: row.editable })
+  }
+  if (row.constraint) {
+    lines.push({ label: '取值', text: row.constraint, color: colors.muted, editable: row.editable })
+  }
+  const impact = row.impact ?? (row.editable && row.section === '基础设置' ? IMPACT : undefined)
+  if (impact) {
+    lines.push({ label: '影响', text: impact, color: colors.muted, editable: row.editable })
+  }
+  return lines
+}
 
 /** 标签列宽：取全部标签的最大显示宽 + 2（允许局域网 10 列 → 12） */
 const LABEL_COL = Math.max(...ROWS.map((row) => displayWidth(row.label))) + 2
@@ -253,6 +383,9 @@ export function SettingsView({
   const [loadError, setLoadError] = useState<string | undefined>(undefined)
   const [dialog, setDialog] = useState<DialogState | undefined>(undefined)
   const [cursor, setCursor] = useState(0)
+  // 左右栏焦点 + 右栏配置行光标（复用节点页双栏焦点模型）
+  const [focus, setFocus] = useState<'nav' | 'panel'>('nav')
+  const [panelCursor, setPanelCursor] = useState(0)
   const [update, setUpdateRaw] = useState<UpdateState>(moduleUpdate ?? { status: 'idle' })
   // 归一化：config 可能来自未含 downloadSource 的旧配置（缺省 auto）
   const [source, setSource] = useState<DownloadSourceConfig>(config.downloadSource ?? { mode: 'auto' })
@@ -327,6 +460,8 @@ export function SettingsView({
 
   const moveCursor = (step: 1 | -1): void => {
     setCursor((current) => (current + step + ACTIONABLE.length) % ACTIONABLE.length)
+    // 左栏切项 → 右栏详情切换，面板光标归零到首行
+    setPanelCursor(0)
   }
 
   const applyNow = (changes: SettingsChanges): void => {
@@ -357,7 +492,7 @@ export function SettingsView({
     const detail =
       err instanceof SettingsError || err instanceof InstallError ? err.detail : undefined
     if (detail) {
-      const inner = Math.max(20, cardWidth - 6)
+      const inner = Math.max(20, width - 6)
       lines.push(
         ...detail
           .split('\n')
@@ -568,26 +703,48 @@ export function SettingsView({
     confirmFor(key)
   }
 
+  // 当前项 key（左栏焦点所在的可操作项）；面板行派生见 valueOf 之后
+  const currentKey: RowKey | undefined = ACTIONABLE[cursor]
+
   useInput(
-    (_input, key) => {
-      if (key.upArrow) {
-        moveCursor(-1)
+    (input, key) => {
+      // 按键期即时派生当前面板行（valueOf 声明在 useInput 之后，无法在模块顶层先算）
+      const row = ROWS.find((r) => r.key === currentKey)
+      const lines = row ? panelLines(row, valueOf(row)) : []
+      const editableCount = lines.filter((line) => line.editable).length
+      // ←→/hl 左右栏焦点互切；右栏仅当前项有可点改行时可入
+      if (key.leftArrow || input === 'h') {
+        setFocus('nav')
         return
       }
-      if (key.downArrow) {
-        moveCursor(1)
+      if (key.rightArrow || input === 'l') {
+        if (editableCount > 0) setFocus('panel')
+        return
+      }
+      if (key.upArrow || input === 'k') {
+        if (focus === 'nav') moveCursor(-1)
+        else setPanelCursor((i) => Math.max(0, i - 1))
+        return
+      }
+      if (key.downArrow || input === 'j') {
+        if (focus === 'nav') moveCursor(1)
+        else setPanelCursor((i) => Math.min(lines.length - 1, i + 1))
         return
       }
       if (key.return) {
-        const rowKey = ACTIONABLE[cursor]
-        if (rowKey) onRowEnter(rowKey)
+        // 左栏与右栏 Enter 同入口：都进入当前项对话框（交互逻辑不变）
+        if (currentKey) onRowEnter(currentKey)
       }
     },
     { isActive: active && !dialog },
   )
 
-  const cardWidth = Math.min(64, Math.max(44, width - 8))
-  // 矮终端（80×24 的 body 仅 18 行）去掉区块间空行，保证卡片完整可见
+  // 双栏宽度（复用节点页机制）：左栏导航容纳最长标签+值缩写，右栏=余量-2
+  // （两栏之和比终端窄 2 列：恰好铺满时真实 TTY 会把右边框挤出折行，节点页同款规避）
+  const narrow = width < 100
+  const navWidth = narrow ? width : Math.min(34, Math.floor(width * 0.34))
+  const panelWidth = narrow ? width : width - navWidth - 2
+  // 矮终端（80×24 的 body 仅 18 行）去掉区块间空行，保证面板完整可见
   const spacious = height >= 20
 
   const valueOf = (row: RowDef): { text: string; color?: string } => {
@@ -646,7 +803,12 @@ export function SettingsView({
     }
   }
 
-  const renderRows = (): ReactNode[] => {
+  /** 左栏值缩写：右栏已有完整值，左栏只显示短值（开关/版本/端口），超长截断 */
+  const navValueWidth = Math.max(6, navWidth - LABEL_COL - 4)
+  // 当前项与其右栏配置行（渲染期派生，供右栏面板与详情标题用）
+  const currentRow: RowDef | undefined = ROWS.find((row) => row.key === currentKey)
+  const currentPanelLines: PanelLine[] = currentRow ? panelLines(currentRow, valueOf(currentRow)) : []
+  const renderNavRows = (): ReactNode[] => {
     const nodes: ReactNode[] = []
     let lastSection: string | undefined
     for (const row of ROWS) {
@@ -659,23 +821,60 @@ export function SettingsView({
         )
         lastSection = row.section
       }
-      const focused = row.editable && ACTIONABLE[cursor] === row.key
+      const isCursor = row.editable && currentKey === row.key
       const value = valueOf(row)
+      const bar = isCursor ? (focus === 'nav' ? '▌' : '❯') : ' '
+      const barColor = isCursor ? (focus === 'nav' ? colors.accent : colors.muted) : undefined
       nodes.push(
-        <Text key={row.key}>
-          {focused ? (
-            <Text {...styles.rowFocus} bold>{'❯ '}</Text>
-          ) : (
-            <Text>{'  '}</Text>
-          )}
-          <Text {...(focused ? styles.rowSelected : {})}>{padDisplay(row.label, LABEL_COL)}</Text>
+        <Text key={row.key} wrap="truncate-end">
+          <Text color={barColor} bold={isCursor && focus === 'nav'}>{`${bar} `}</Text>
+          <Text {...(isCursor ? styles.rowSelected : {})}>{padDisplay(row.label, LABEL_COL)}</Text>
           {value.text !== '' ? (
-            <Text color={value.color ?? (row.editable ? undefined : colors.muted)}>{value.text}</Text>
+            <Text color={value.color ?? (row.editable ? undefined : colors.muted)}>
+              {truncateDisplay(value.text, navValueWidth)}
+            </Text>
           ) : null}
         </Text>,
       )
     }
     return nodes
+  }
+
+  /** 右栏配置面板：当前项展开为可点改配置行（每行可 Enter 修改，等价左栏 Enter） */
+  const renderPanel = (): ReactNode => {
+    if (!currentRow) {
+      return <Text dimColor>无可配置项</Text>
+    }
+    return (
+      <Box flexDirection="column">
+        {currentPanelLines.map((line, index) => {
+          const isCursor = focus === 'panel' && line.editable && index === panelCursor
+          const bar = isCursor ? '▌' : ' '
+          const label = padDisplay(line.label, PANEL_LABEL_COL)
+          return (
+            <Text key={`${line.label}-${index}`} wrap="truncate-end">
+              <Text color={isCursor ? colors.accent : undefined} bold={isCursor}>{`${bar} `}</Text>
+              <Text {...(isCursor ? styles.rowSelected : {})} dimColor={!line.editable}>
+                {label}
+              </Text>
+              <Text color={line.color} italic={line.italic} dimColor={line.italic || !line.editable}>
+                {line.text}
+              </Text>
+            </Text>
+          )
+        })}
+        {currentRow.editable ? (
+          <Box marginTop={1}>
+            <FooterLine
+              hints={[{ key: '↑↓', label: '选择' }, { key: 'Enter', label: '修改' }]}
+              width={panelWidth - 4}
+            />
+          </Box>
+        ) : (
+          <Text dimColor>只读</Text>
+        )}
+      </Box>
+    )
   }
 
   if (dialog) {
@@ -857,20 +1056,40 @@ export function SettingsView({
     )
   }
 
+  const navPanel = (
+    <Panel title="◆ 设置" width={navWidth} fillHeight>
+      {renderNavRows()}
+    </Panel>
+  )
+
+  const detailPanel = (
+    <Panel title={currentRow ? currentRow.label : '详情'} width={panelWidth} fillHeight>
+      {renderPanel()}
+    </Panel>
+  )
+
   return (
-    <Box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
-      <Panel title="◆ 设置" width={cardWidth}>
-        {renderRows()}
-        <Box marginTop={1}>
-          <FooterLine
-            hints={[
-              { key: '↑↓', label: '选择' },
-              { key: 'Enter', label: '修改' },
-            ]}
-            width={cardWidth - 4}
-          />
-        </Box>
-      </Panel>
+    <Box flexDirection="column" flexGrow={1}>
+      {/* row 容器让纵轴变交叉轴（默认 stretch）拉伸 Panel——column 直下内层
+          flexGrow 是空操作（节点页同款机制） */}
+      <Box flexDirection="row" flexGrow={1}>
+        {narrow ? (focus === 'nav' ? navPanel : detailPanel) : (
+          <>
+            {navPanel}
+            {detailPanel}
+          </>
+        )}
+      </Box>
+      <Box paddingLeft={1}>
+        <FooterLine
+          hints={[
+            { key: '↑↓', label: '移动' },
+            { key: '←→', label: '切栏' },
+            { key: 'Enter', label: '修改' },
+          ]}
+          width={width - 2}
+        />
+      </Box>
     </Box>
   )
 }

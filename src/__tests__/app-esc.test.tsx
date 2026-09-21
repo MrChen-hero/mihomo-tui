@@ -209,7 +209,7 @@ describe('App 分级退出闸门', () => {
     const text = textOf(term.frames())
     expect(text).toContain('◆ 设置')
     expect(text).toContain('17890')
-    expect(text).toContain('❯ 混合端口')
+    expect(text).toContain('▌ 混合端口')
 
     term.press('\x1b') // 设置页 ESC：弹退出确认（分级退出语义不变）
     await delay(150)
