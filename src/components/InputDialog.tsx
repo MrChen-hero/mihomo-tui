@@ -20,6 +20,7 @@
  */
 import { Box, Text, useInput, usePaste } from 'ink'
 import { FooterLine } from '../ui/FooterLine.js'
+import { ListDialog } from './ListDialog.js'
 import { MIN_PANEL_WIDTH, Panel, TOP_PREFIX, panelTopParts } from '../ui/Panel.js'
 import { colors } from '../ui/theme.js'
 import { useRef, useState, type ReactNode } from 'react'
@@ -38,6 +39,16 @@ export interface InputField {
   secret?: boolean
   /** 只读展示（如编辑时的订阅名）；不接收输入，无错误态 */
   readOnly?: boolean
+  /**
+   * 选择型字段：非空时不接受自由输入，Enter 打开选项列表，选中后回填。
+   * 用于「类型」这类固定枚举。
+   */
+  options?: { value: string; label: string }[]
+  /**
+   * 可输入也可从列表选的字段：照常打字，按 e 打开选项列表回填。
+   * 与 options 互斥使用。用于「分组」这类既有候选项又允许新建的字段。
+   */
+  suggestions?: { value: string; label: string }[]
   /** 初始值 */
   value?: string
 }
@@ -144,6 +155,8 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     Math.min(fields[0]?.value?.length ?? 0, Number.MAX_SAFE_INTEGER),
   )
   const [attempted, setAttempted] = useState(false) // 只有在提交被拦后才开始逐字段标红
+  // 选择型字段（options）按下 Enter 时弹出的选项列表；null 表示未打开
+  const [picking, setPicking] = useState<InputField | null>(null)
 
   const errors = allErrors(fields, values)
 
@@ -187,6 +200,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   // 对话框存活期间捕获全部按键：App 全局 handler（含 ESC 退出）一律让路
   useKeyCapture(true)
   useInput((input, key) => {
+    if (picking) return
     if (key.escape) {
       onCancel()
       return
@@ -199,8 +213,16 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
       moveTo(activeRef.current + 1)
       return
     }
-    // Enter 提交整表（与列表页「Enter = 确认当前操作」一致）；
-    // 字段间移动用 ↑↓，不复用 Enter 做「下一项」
+    // Enter 一律提交整表（与列表页「Enter = 确认」一致）。
+    // 选择列表统一用 e 打开：options 为纯选择，suggestions 为可输入也可选。
+    if (input === 'e' && !key.ctrl) {
+      const current = fields[activeRef.current]
+      const choices = current?.options ?? current?.suggestions
+      if (current && choices && choices.length > 0) {
+        setPicking(current)
+        return
+      }
+    }
     if (key.return) {
       if (isFormValid(fields, valuesRef.current)) {
         onSubmit({ ...valuesRef.current })
@@ -261,6 +283,13 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
       return
     }
     if (key.meta) return
+    // 纯选择字段不接受自由输入；带候选项的字段中 e 打开选择列表
+    const current = fields[activeRef.current]
+    if (current?.options) return
+    if (current?.suggestions && input === 'e') {
+      setPicking(current)
+      return
+    }
     // 整串插入（多字符 chunk = 不带 bracketed paste 标记的粘贴 / 快速输入）
     insertText(input)
   })
@@ -285,8 +314,9 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   const renderSlotContent = (field: InputField, value: string, isActive: boolean): ReactNode => {
     if (!isActive) {
       const display = field.secret ? '*'.repeat(value.length) : value
+      const optionLabel = field.options?.find((option) => option.value === value)?.label
       // 未聚焦时按显示宽度截断到一行，超长值（订阅 URL）尾部省略，避免撑高槽位
-      const shown = truncateDisplay(display, innerWidth) || (field.placeholder ?? '—')
+      const shown = truncateDisplay(optionLabel ?? display, innerWidth) || (field.placeholder ?? '—')
       return <Text dimColor wrap="truncate">{shown}</Text>
     }
     const display = field.secret ? '*'.repeat(value.length) : value
@@ -308,7 +338,11 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
         ) : (
           <>
             <Text inverse>{' '}</Text>
-            {field.placeholder ? <Text dimColor>{field.placeholder}</Text> : null}
+            {field.options || field.suggestions ? (
+              <Text dimColor>{field.options ? 'e 选择' : 'e 选择已有'}</Text>
+            ) : field.placeholder ? (
+              <Text dimColor>{field.placeholder}</Text>
+            ) : null}
           </>
         )}
       </Text>
@@ -380,5 +414,23 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
       </Box>
     </Panel>
   )
+
+  // 选择型字段：Enter（options）或 e（suggestions）打开选项列表，选中后回填
+  const pickingChoices = picking?.options ?? picking?.suggestions
+  if (picking && pickingChoices) {
+    return (
+      <ListDialog
+        borderTitle={picking.label}
+        items={pickingChoices.map((option) => ({ value: option.value, label: option.label }))}
+        width={cardWidth}
+        onSubmit={(value) => {
+          commitValues({ ...valuesRef.current, [picking.key]: value })
+          setPicking(null)
+        }}
+        onCancel={() => setPicking(null)}
+      />
+    )
+  }
+
   return width < 44 ? card : <Box justifyContent="center">{card}</Box>
 }
