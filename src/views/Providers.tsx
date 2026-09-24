@@ -66,7 +66,6 @@ const HINTS: FooterHint[] = [
   { key: 'u', label: '更新' },
   { key: 'U', label: '全部更新' },
   { key: 'c', label: '健康检查' },
-  { key: 'Enter', label: '展开节点' },
   { key: 'r', label: '刷新' },
 ]
 
@@ -112,7 +111,6 @@ export function ProvidersView({
   serviceDeps,
 }: ProvidersViewProps) {
   const [index, setIndex] = useState(0)
-  const [expanded, setExpanded] = useState<string | undefined>()
   const [dialog, setDialog] = useState<DialogState>({ type: 'none' })
   const rows = providers.providers
 
@@ -126,11 +124,6 @@ export function ProvidersView({
   }, [rows.length, index])
 
   const current = rows[index]
-
-  const expandedNodes = useMemo(
-    () => (expanded ? providers.nodesOf(expanded) : []),
-    [expanded, providers],
-  )
 
   /** 统一的事务执行：进度对话框 → 成功消息/警告 → 失败转错误对话框 */
   const runFlow = async (
@@ -342,10 +335,6 @@ export function ProvidersView({
         setIndex((i) => Math.min(rows.length - 1, i + 1))
         return
       }
-      if (key.return) {
-        setExpanded((prev) => (prev === current?.name ? undefined : current?.name))
-        return
-      }
       // 设计稿 8.2：更新进行中不允许打开新对话框
       if ((input === 'a' || input === 'd' || input === 'e' || input === 'o') && rows.some((row) => row.updating)) {
         onMessage('订阅更新进行中，请稍后再试')
@@ -404,8 +393,8 @@ export function ProvidersView({
     { isActive: active },
   )
 
-  // Panel 顶线/底边共 2 行；展开模式下节点区还要占下半屏
-  const listHeight = expanded ? Math.max(2, Math.floor((height - 7) / 2)) : Math.max(3, height - 6)
+  // Panel 顶线/底边共 2 行
+  const listHeight = Math.max(3, height - 6)
 
   // 列宽：窄终端收窄使用率条。
   // 表格最小可用宽度约 72 列（更窄表头会折行）；spec 只承诺页脚降级与
@@ -512,11 +501,11 @@ export function ProvidersView({
         <Box flexDirection="column" flexGrow={1}>
           {/* 非展开且无错误盒时主列表撑满到页脚（对齐日志/连接页的底框贴底）；
               row 包裹层让交叉轴 stretch 拉伸 Panel，fillHeight 随之生效 */}
-          <Box flexDirection="row" flexGrow={expanded || current?.error ? undefined : 1}>
+          <Box flexDirection="row" flexGrow={current?.error ? undefined : 1}>
             <Panel
               title={`订阅 · ${rows.length}`}
               width={width}
-              fillHeight={!(expanded || current?.error)}
+              fillHeight={!current?.error}
             >
             <Text {...styles.tableHeader}>
               {padDisplay('NAME', 14)}
@@ -575,27 +564,6 @@ export function ProvidersView({
             </Panel>
           ) : null}
 
-          {expanded ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Text bold underline>{`${expanded} 的节点（${expandedNodes.length}）`}</Text>
-              <ScrollList
-                items={expandedNodes}
-                selected={-1}
-                height={Math.max(2, height - listHeight - 6)}
-                renderItem={(node) => (
-                  <Text>
-                    {'  '}
-                    {fitDisplay(node.name, Math.max(20, width - 20))}
-                    {node.delay ? (
-                      <Text color={colors.success}>{`${node.delay}ms`}</Text>
-                    ) : (
-                      <Text dimColor>---</Text>
-                    )}
-                  </Text>
-                )}
-              />
-            </Box>
-          ) : null}
         </Box>
       )}
 
