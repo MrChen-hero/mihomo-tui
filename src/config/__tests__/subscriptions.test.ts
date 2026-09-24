@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isDuplicateName,
   loadSubscriptions,
+  prefixFromName,
   saveSubscriptions,
   validateSubscription,
 } from '../subscriptions.js'
@@ -19,15 +20,15 @@ function tempSubsFile(entries: unknown): string {
 }
 
 describe('validateSubscription 校验规则', () => {
-  it('接受合法的最小条目（无前缀）', () => {
+  it('接受合法的最小条目（无前缀），缺省 type 为 remote', () => {
     const result = validateSubscription({ name: 'alpha', url: GOOD_URL })
-    expect(result).toEqual({ ok: true, data: { name: 'alpha', url: GOOD_URL } })
+    expect(result).toEqual({ ok: true, data: { name: 'alpha', type: 'remote', url: GOOD_URL } })
   })
 
   it('带前缀时保留前缀；空前缀视为无前缀', () => {
     expect(validateSubscription({ name: 'a', url: GOOD_URL, prefix: '[Y] ' }).ok).toBe(true)
     const empty = validateSubscription({ name: 'a', url: GOOD_URL, prefix: '' })
-    expect(empty.ok && empty.data).toEqual({ name: 'a', url: GOOD_URL })
+    expect(empty.ok && empty.data).toEqual({ name: 'a', type: 'remote', url: GOOD_URL })
   })
 
   it('拒绝空名、超长名、非法字符名', () => {
@@ -61,12 +62,64 @@ describe('validateSubscription 校验规则', () => {
     expect(validateSubscription({ name: 'a', url: 42 }).ok).toBe(false)
     expect(validateSubscription({ name: 'a', url: GOOD_URL, prefix: 7 }).ok).toBe(false)
   })
+
+  it('group：合法保留、空白归一为空、非法拒绝', () => {
+    const ok = validateSubscription({ name: 'a', url: GOOD_URL, group: '香港专线' })
+    expect(ok.ok && ok.data.group).toBe('香港专线')
+    const blank = validateSubscription({ name: 'a', url: GOOD_URL, group: '   ' })
+    expect(blank.ok && blank.data.group).toBeUndefined()
+    expect(validateSubscription({ name: 'a', url: GOOD_URL, group: 'a'.repeat(17) }).ok).toBe(false)
+    expect(validateSubscription({ name: 'a', url: GOOD_URL, group: 'bad\nname' }).ok).toBe(false)
+    expect(validateSubscription({ name: 'a', url: GOOD_URL, group: 7 }).ok).toBe(false)
+  })
+
+  it('interval：分钟数保留，0 与空视为禁用，超范围拒绝', () => {
+    const ok = validateSubscription({ name: 'a', url: GOOD_URL, interval: 30 })
+    expect(ok.ok && ok.data.interval).toBe(30)
+    const zero = validateSubscription({ name: 'a', url: GOOD_URL, interval: 0 })
+    expect(zero.ok && zero.data.interval).toBeUndefined()
+    expect(validateSubscription({ name: 'a', url: GOOD_URL, interval: -1 }).ok).toBe(false)
+    expect(validateSubscription({ name: 'a', url: GOOD_URL, interval: 43_201 }).ok).toBe(false)
+    expect(validateSubscription({ name: 'a', url: GOOD_URL, interval: 1.5 }).ok).toBe(false)
+  })
+
+  it('local 类型不需要 URL，且不能带 URL', () => {
+    const ok = validateSubscription({ name: 'mylocal', type: 'local' })
+    expect(ok.ok && ok.data).toEqual({ name: 'mylocal', type: 'local' })
+    expect(validateSubscription({ name: 'mylocal', type: 'local', url: GOOD_URL }).ok).toBe(false)
+    expect(validateSubscription({ name: 'a', type: 'remote' }).ok).toBe(false)
+  })
+
+  it('locked 只对 remote 生效', () => {
+    const remote = validateSubscription({ name: 'a', url: GOOD_URL, locked: true })
+    expect(remote.ok && remote.data.locked).toBe(true)
+    const local = validateSubscription({ name: 'a', type: 'local', locked: true })
+    expect(local.ok && local.data.locked).toBeUndefined()
+  })
+
+  it('旧清单（无 type 字段）读取为 remote', () => {
+    const path = tempSubsFile({ subscriptions: [{ name: 'alpha', url: GOOD_URL }] })
+    const subs = loadSubscriptions(path)
+    expect(subs[0]).toMatchObject({ name: 'alpha', type: 'remote', url: GOOD_URL })
+  })
+})
+
+describe('prefixFromName 前缀派生', () => {
+  it('取首个字母大写', () => {
+    expect(prefixFromName('yuetoto')).toBe('[Y] ')
+    expect(prefixFromName('ax-hk')).toBe('[A] ')
+  })
+
+  it('不含字母时用 [-]', () => {
+    expect(prefixFromName('123node')).toBe('[-] ')
+    expect(prefixFromName('-backup')).toBe('[-] ')
+  })
 })
 
 describe('isDuplicateName 重名判断', () => {
   const subs = [
-    { name: 'alpha', url: GOOD_URL },
-    { name: 'beta', url: GOOD_URL },
+    { name: 'alpha', type: 'remote', url: GOOD_URL },
+    { name: 'beta', type: 'remote', url: GOOD_URL },
   ]
   it('同名（含大小写变体）判重', () => {
     expect(isDuplicateName('alpha', subs)).toBe(true)
@@ -119,7 +172,7 @@ describe('loadSubscriptions 读取与容错', () => {
 describe('saveSubscriptions 原子写', () => {
   it('写入两空格缩进 JSON + 末尾换行，并能读回', () => {
     const path = tempSubsFile(undefined)
-    const subs = [{ name: 'alpha', url: GOOD_URL, prefix: '[A] ' }]
+    const subs = [{ name: 'alpha', type: 'remote' as const, url: GOOD_URL, prefix: '[A] ' }]
     saveSubscriptions(subs, path)
     const text = readFileSync(path, 'utf8')
     expect(text.endsWith('\n')).toBe(true)
@@ -129,14 +182,14 @@ describe('saveSubscriptions 原子写', () => {
 
   it('不留下 .tmp 残留文件', () => {
     const path = tempSubsFile(undefined)
-    saveSubscriptions([{ name: 'a', url: GOOD_URL }], path)
+    saveSubscriptions([{ name: 'a', type: 'remote', url: GOOD_URL }], path)
     expect(existsSync(path)).toBe(true)
     expect(readdirSync(dirname(path)).filter((entry) => entry.endsWith('.tmp'))).toEqual([])
   })
 
   it('目录不存在时自动创建', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'mihomo-tui-subs-')), 'deep', 'subs.json')
-    saveSubscriptions([{ name: 'a', url: GOOD_URL }], path)
+    saveSubscriptions([{ name: 'a', type: 'remote', url: GOOD_URL }], path)
     expect(existsSync(path)).toBe(true)
   })
 })

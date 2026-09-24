@@ -31,3 +31,24 @@ export function validatePrefixInput(value: string): string | undefined {
   if (value.length > MAX_PREFIX_LENGTH) return `节点名前缀不能超过 ${MAX_PREFIX_LENGTH} 个字符`
   return undefined
 }
+
+export const MAX_GROUP_LENGTH = 16
+/** 更新间隔上限（分钟）：30 天 */
+export const MAX_INTERVAL_MINUTES = 43_200
+
+export function validateGroupInput(value: string): string | undefined {
+  if (!value.trim()) return undefined
+  const result = validateSubscription({ name: 'x', url: 'https://x', group: value })
+  if (!result.ok && result.error.includes('分组')) return result.error
+  return undefined
+}
+
+/** 留空表示禁用自动更新；否则必须是 1–43200 的整数分钟 */
+export function validateIntervalInput(value: string): string | undefined {
+  const text = value.trim()
+  if (!text) return undefined
+  if (!/^[1-9]\d*$/.test(text)) return '更新间隔必须是正整数（分钟），留空表示禁用自动更新'
+  const minutes = Number(text)
+  if (minutes > MAX_INTERVAL_MINUTES) return `更新间隔不能超过 ${MAX_INTERVAL_MINUTES} 分钟`
+  return undefined
+}

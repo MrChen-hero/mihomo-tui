@@ -85,6 +85,7 @@ export const PURPOSE_GROUPS = [
 export function subscriptionDirectRules(subs: Subscription[]): string[] {
   const hosts = new Set<string>()
   for (const sub of subs) {
+    if (!sub.url) continue
     try {
       hosts.add(new URL(sub.url).hostname)
     } catch {
@@ -94,20 +95,28 @@ export function subscriptionDirectRules(subs: Subscription[]): string[] {
   return [...hosts].sort().map((host) => `DOMAIN,${host},DIRECT`)
 }
 
-/** 生成 proxy-providers 段 */
+/** 生成 proxy-providers 段。
+ * remote 且未锁定 → http provider，按 URL 拉取；
+ * local，或 remote 但已锁定（手动编辑过）→ file provider，读本地 YAML，
+ * 避免内核按 URL 重新拉取覆盖手改内容。
+ * interval 以分钟存储，这里换算成秒；缺省 / 0 / 锁定一律写 0（禁用自动更新）。
+ */
 export function buildProviders(
   subs: Subscription[],
   testUrl: string = TEST_URL,
 ): Record<string, unknown> {
   const providers: Record<string, unknown> = {}
   for (const sub of subs) {
+    const fileBacked = sub.type === 'local' || sub.locked === true
+    const intervalSec = fileBacked || !sub.interval ? 0 : sub.interval * 60
     providers[sub.name] = {
-      type: 'http',
-      url: sub.url,
+      ...(fileBacked
+        ? { type: 'file' }
+        : { type: 'http', url: sub.url }),
       // 必须是相对路径：mihomo 对 provider path 有安全校验，
       // 配置文件外的绝对路径会被拒绝
       path: `./providers/${sub.name}.yaml`,
-      interval: 3600,
+      interval: intervalSec,
       'exclude-filter': EXCLUDE_FILTER,
       ...(sub.prefix ? { override: { 'additional-prefix': sub.prefix } } : {}),
       'health-check': {
@@ -269,7 +278,8 @@ function pickRecord(source: ParsedYaml, key: string): ParsedYaml | undefined {
   return isRecord(value) ? (value as ParsedYaml) : undefined
 }
 
-function hostOf(url: string): string | undefined {
+function hostOf(url: string | undefined): string | undefined {
+  if (!url) return undefined
   try {
     return new URL(url).hostname
   } catch {

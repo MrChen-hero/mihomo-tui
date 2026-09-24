@@ -164,7 +164,7 @@ describe('[1] 节点页渲染', () => {
     term.press('j')
     await delay()
     const text = textOf(term.frames())
-    expect(text).toContain('▌  机场-x')
+    expect(text).toContain('▌  x')
     term.instance.unmount()
   })
 

@@ -145,6 +145,21 @@ export class ConfigManager {
     rmSync(join(this.mihomoDir, 'providers', `${name}.yaml`), { force: true })
   }
 
+  /** provider 缓存/内容文件路径（providers/<name>.yaml） */
+  providerCachePath(name: string): string {
+    return join(this.mihomoDir, 'providers', `${name}.yaml`)
+  }
+
+  /**
+   * 重命名 provider 缓存文件。旧文件不存在时不报错（本地订阅可能尚未创建）。
+   * 用 rename(2)，同一文件系统内原子。
+   */
+  renameProviderCache(oldName: string, newName: string): void {
+    const from = this.providerCachePath(oldName)
+    if (!existsSync(from)) return
+    renameSync(from, this.providerCachePath(newName))
+  }
+
   /** 清理超过保留期的 config.yaml.bak.*，返回被删除的路径列表 */
   pruneBackups(now: number = Date.now()): string[] {
     const removed: string[] = []

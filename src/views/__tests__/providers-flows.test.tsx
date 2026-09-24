@@ -18,8 +18,8 @@ import { buildSkeleton } from '../../config/skeleton.js'
 import type { ServiceDeps } from '../../config/subscriptionService.js'
 import { createTerminal, delay, textOf, type Terminal } from '../../components/__tests__/harness.js'
 
-const ALPHA = { name: 'alpha', url: 'https://alpha.example/sub?token=aaaa' }
-const BETA = { name: 'beta', url: 'https://beta.example/sub?token=bbbb', prefix: '[B] ' }
+const ALPHA = { name: 'alpha', type: 'remote' as const, url: 'https://alpha.example/sub?token=aaaa' }
+const BETA = { name: 'beta', type: 'remote' as const, url: 'https://beta.example/sub?token=bbbb', prefix: '[B] ' }
 
 let root: string
 let mihomoDir: string
@@ -163,11 +163,12 @@ describe('订阅流程（视图层集成）', () => {
     await delay(60)
     expect(frames(terminal)).toContain('添加订阅')
 
+    // 字段顺序：类型 → 名称 → URL → 更新间隔 → 分组；Enter 提交整表
+    terminal.press('\x1B[B') // 类型 → 名称
     for (const char of 'gamma') terminal.press(char)
-    terminal.press('\r') // 名称合法 → 前进
+    terminal.press('\x1B[B') // 名称 → URL
     for (const char of 'https://gamma.example/sub?token=cccc') terminal.press(char)
-    terminal.press('\r') // URL 合法 → 前进
-    terminal.press('\r') // 前缀留空 → 提交
+    terminal.press('\r') // 提交
     await vi.waitFor(() => {
       expect(messages).toContain('已添加订阅 gamma')
     })
@@ -222,23 +223,26 @@ describe('订阅流程（视图层集成）', () => {
     expect(onChanged).toHaveBeenCalled()
   })
 
-  it('e 编辑前缀：名称只读，前缀写入配置', async () => {
+  it('e 编辑分组：分组写入清单，前缀保持由名字派生', async () => {
     const { terminal, messages, onChanged } = mountView()
     await delay(60)
-    terminal.press('e') // 编辑 alpha（当前无前缀）
+    terminal.press('e') // 编辑 alpha
     await delay(60)
     expect(frames(terminal)).toContain('编辑订阅：alpha')
-    expect(frames(terminal)).toContain('（只读）')
 
-    terminal.press('\r') // 从只读的名称前进到前缀
+    // 字段顺序：类型 → 名称 → URL → 间隔 → 分组；Enter 提交整表
+    for (let i = 0; i < 4; i++) terminal.press('\x1B[B')
     await delay(30)
-    for (const char of '[A] ') terminal.press(char)
-    terminal.press('\r') // 提交
+    for (const char of 'hongkong') terminal.press(char)
+    terminal.press('\r')
     await vi.waitFor(() => {
-      expect(messages).toContain('已更新订阅 alpha 的前缀')
+      expect(messages).toContain('已更新订阅 alpha')
     })
-    const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
-    expect(config['proxy-providers']?.alpha?.override?.['additional-prefix']).toBe('[A] ')
+    const saved = YAML.parse(readFileSync(subsPath, 'utf8')).subscriptions.find(
+      (s: { name: string }) => s.name === 'alpha',
+    )
+    expect(saved.group).toBe('hongkong')
+    expect(saved.prefix).toBe('[A] ')
     expect(onChanged).toHaveBeenCalled()
   })
 
@@ -247,10 +251,11 @@ describe('订阅流程（视图层集成）', () => {
     await delay(60)
     terminal.press('a')
     await delay(60)
+    // 类型 → 名称 → URL，Enter 提交整表
+    terminal.press('\x1B[B')
     for (const char of 'gamma') terminal.press(char)
-    terminal.press('\r')
+    terminal.press('\x1B[B')
     for (const char of 'https://gamma.example/sub?token=cccc') terminal.press(char)
-    terminal.press('\r')
     terminal.press('\r')
     await vi.waitFor(() => {
       expect(frames(terminal)).toContain('服务启动失败（已回滚）')
