@@ -367,13 +367,20 @@ src/
 |---|---|
 | [`docs/SPEC.md`](docs/SPEC.md) | 完整设计规格：痛点分析、API 实测、架构决策、踩坑记录 |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | 开发文档：架构分层、核心实现、扩展指南、FAQ |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 路线图与技术债：待实现功能、竞品对比、非目标清单 |
 | [`docs/specs/2026-08-17-subscription-management-design.md`](docs/specs/2026-08-17-subscription-management-design.md) | 订阅生命周期管理（v0.2.0）设计稿 |
+| [`docs/specs/2026-09-22-tui-standardize-polish-spec.md`](docs/specs/2026-09-22-tui-standardize-polish-spec.md) | TUI 标准化美化（v0.2.1）设计稿 |
 
 ## 路线图
 
 - [x] v0.1.0 —— CLI + TUI + 配置迁移脚本
 - [x] v0.2.0 —— TUI 内订阅生命周期管理（新增 / 删除 / 编辑）+ 自动化测试体系
-- [ ] 批量导入订阅、订阅分组与历史记录
+- [x] v0.2.1 —— TUI 标准化美化：响应式布局、设计系统统一、内核版本管理
+- [ ] v0.3.0 —— 订阅增强：分组、重命名、远程/本地类型、更新间隔、内联 YAML 编辑（前缀按订阅名自动派生）
+- [ ] v0.4.0 —— 配置管理：规则管理、本地节点、代理链可视化
+- [ ] v0.5.0 —— 单二进制打包（Bun/Deno）
+
+详细规划与技术债请参阅 [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## 贡献
 

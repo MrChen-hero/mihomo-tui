@@ -1,5 +1,6 @@
 /** 标签页 2：订阅（Providers），v0.2.0 起支持在 TUI 内增删改订阅 */
 import { useEffect, useMemo, useState } from 'react'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { Box, Text, useInput } from 'ink'
 import { ScrollList } from '../components/ScrollList.js'
 import { spinnerFrame } from '../components/DelayBadge.js'
@@ -9,6 +10,7 @@ import { colors, styles, toneColor, type Tone } from '../ui/theme.js'
 import { progressBar } from '../components/ProgressDialog.js'
 import { ConfirmDialog } from '../components/ConfirmDialog.js'
 import { InputDialog, type InputField } from '../components/InputDialog.js'
+import { TextEditor } from '../components/TextEditor.js'
 import { ProgressDialog } from '../components/ProgressDialog.js'
 import { formatBytes, formatRelativeTime, fitDisplay, padDisplay } from '../commands/output.js'
 import type { ProviderRow } from '../hooks/useProviders.js'
@@ -21,13 +23,15 @@ import {
   depsFromAppConfig,
   addSubscription,
   deleteSubscription,
-  editSubscriptionPrefix,
+  editSubscription,
 } from '../config/subscriptionService.js'
 import type { ServiceDeps, Step } from '../config/subscriptionService.js'
+import { ConfigManager } from '../config/manager.js'
 import { loadSubscriptions } from '../config/subscriptions.js'
 import { useKeyCapture } from '../ui/keyCapture.js'
 import type { Subscription } from '../config/types.js'
-import { validateNameInput, validatePrefixInput, validateUrlInput } from './subscriptionFields.js'
+import { checkProxyFile } from './yamlFile.js'
+import { validateGroupInput, validateIntervalInput, validateNameInput, validateUrlInput } from './subscriptionFields.js'
 
 /** 到期语义（纯函数）：长期/已过期/7 天内警告/普通剩余天数 */
 export function expireInfo(
@@ -58,6 +62,7 @@ const HINTS: FooterHint[] = [
   { key: 'a', label: '新增' },
   { key: 'd', label: '删除' },
   { key: 'e', label: '编辑' },
+  { key: 'o', label: '编辑文件' },
   { key: 'u', label: '更新' },
   { key: 'U', label: '全部更新' },
   { key: 'c', label: '健康检查' },
@@ -84,6 +89,7 @@ type DialogState =
   | { type: 'none' }
   | { type: 'input'; title: string; fields: InputField[]; submitLabel: string }
   | { type: 'confirm'; message: string[]; danger: boolean }
+  | { type: 'editor'; name: string; text: string }
   | {
       type: 'progress'
       title: string
@@ -169,6 +175,15 @@ export function ProvidersView({
       submitLabel: 'add',
       fields: [
         {
+          label: '类型（remote 远程 / local 本地）',
+          key: 'type',
+          placeholder: 'remote',
+          validate: (value) =>
+            value && value !== 'remote' && value !== 'local'
+              ? '类型只能是 remote 或 local'
+              : undefined,
+        },
+        {
           label: '订阅名称',
           key: 'name',
           placeholder: 'my-airport',
@@ -184,17 +199,22 @@ export function ProvidersView({
           },
         },
         {
-          label: '订阅 URL',
+          label: '订阅 URL（本地订阅留空）',
           key: 'url',
           placeholder: 'https://...',
-          required: true,
           validate: validateUrlInput,
         },
         {
-          label: '节点名前缀',
-          key: 'prefix',
-          placeholder: '可选，如 [X] ',
-          validate: validatePrefixInput,
+          label: '更新间隔（分钟，留空禁用自动更新）',
+          key: 'interval',
+          placeholder: '如 60',
+          validate: validateIntervalInput,
+        },
+        {
+          label: '分组（可选）',
+          key: 'group',
+          placeholder: '如 香港专线',
+          validate: validateGroupInput,
         },
       ],
     })
@@ -202,21 +222,90 @@ export function ProvidersView({
 
   const openEditDialog = (): void => {
     if (!current) return
-    let prefix = ''
+    let sub: Subscription | undefined
     try {
-      prefix = loadSubscriptions(deps.subscriptionsPath).find((s) => s.name === current.name)?.prefix ?? ''
+      sub = loadSubscriptions(deps.subscriptionsPath).find((s) => s.name === current.name)
     } catch {
-      prefix = ''
+      sub = undefined
     }
     setDialog({
       type: 'input',
       title: `编辑订阅：${current.name}`,
       submitLabel: 'edit',
       fields: [
-        { label: '订阅名称', key: 'name', readOnly: true, value: current.name },
-        { label: '节点名前缀', key: 'prefix', value: prefix, validate: validatePrefixInput },
+        {
+          label: '类型（remote 远程 / local 本地）',
+          key: 'type',
+          value: sub?.type ?? 'remote',
+          validate: (value) =>
+            value !== 'remote' && value !== 'local' ? '类型只能是 remote 或 local' : undefined,
+        },
+        {
+          label: '订阅名称（修改即重命名）',
+          key: 'name',
+          value: current.name,
+          required: true,
+          validate: (value) => {
+            let known: Subscription[] = []
+            try {
+              known = loadSubscriptions(deps.subscriptionsPath).filter((s) => s.name !== current.name)
+            } catch {
+              known = []
+            }
+            return validateNameInput(value, known)
+          },
+        },
+        {
+          label: '订阅 URL（本地订阅留空）',
+          key: 'url',
+          value: sub?.url ?? '',
+          validate: (value) => (value ? validateUrlInput(value) : undefined),
+        },
+        {
+          label: '更新间隔（分钟，留空禁用自动更新）',
+          key: 'interval',
+          value: sub?.interval ? String(sub.interval) : '',
+          validate: validateIntervalInput,
+        },
+        {
+          label: '分组（可选）',
+          key: 'group',
+          value: sub?.group ?? '',
+          validate: validateGroupInput,
+        },
       ],
     })
+  }
+
+  const openEditor = (): void => {
+    if (!current) return
+    const manager = deps.manager ?? new ConfigManager(config?.mihomoDir)
+    const path = manager.providerCachePath(current.name)
+    const text = existsSync(path) ? readFileSync(path, 'utf8') : 'proxies: []\n'
+    setDialog({ type: 'editor', name: current.name, text })
+  }
+
+  const saveEditor = (name: string, text: string): void => {
+    const manager = deps.manager ?? new ConfigManager(config?.mihomoDir)
+    const path = manager.providerCachePath(name)
+    manager.ensureProvidersDir()
+    writeFileSync(path, text.endsWith('\n') ? text : `${text}\n`, 'utf8')
+    // 远程订阅手动编辑后锁定，防止内核按 URL 重新拉取覆盖
+    let sub: Subscription | undefined
+    try {
+      sub = loadSubscriptions(deps.subscriptionsPath).find((s) => s.name === name)
+    } catch {
+      sub = undefined
+    }
+    if (sub?.type === 'remote' && !sub.locked) {
+      void runFlow('锁定订阅', EDIT_STEPS, async (onProgress) => {
+        await editSubscription(name, { locked: true }, { ...deps, onProgress })
+        return `已保存并锁定订阅 ${name}（自动更新已禁用）`
+      })
+      return
+    }
+    setDialog({ type: 'none' })
+    onMessage(`已保存订阅文件 ${name}`)
   }
 
   const openDeleteConfirm = (): void => {
@@ -258,7 +347,7 @@ export function ProvidersView({
         return
       }
       // 设计稿 8.2：更新进行中不允许打开新对话框
-      if ((input === 'a' || input === 'd' || input === 'e') && rows.some((row) => row.updating)) {
+      if ((input === 'a' || input === 'd' || input === 'e' || input === 'o') && rows.some((row) => row.updating)) {
         onMessage('订阅更新进行中，请稍后再试')
         return
       }
@@ -280,6 +369,14 @@ export function ProvidersView({
           return
         }
         openEditDialog()
+        return
+      }
+      if (input === 'o') {
+        if (!current) {
+          onMessage('没有可编辑的订阅')
+          return
+        }
+        openEditor()
         return
       }
       if (input === 'u' && current) {
@@ -324,6 +421,20 @@ export function ProvidersView({
         挤压，窄终端（24 行）内层输入盒会被压塌错边 */}
       {dialog.type !== 'none' ? (
         <Box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
+          {dialog.type === 'editor' ? (
+            <TextEditor
+              title={`编辑订阅文件 · ${dialog.name}.yaml`}
+              initialText={dialog.text}
+              height={height}
+              width={Math.min(width, 100)}
+              validate={(text) => {
+                const result = checkProxyFile(text)
+                return result.ok ? undefined : result.error
+              }}
+              onSave={(text) => saveEditor(dialog.name, text)}
+              onCancel={() => setDialog({ type: 'none' })}
+            />
+          ) : null}
           {dialog.type === 'input' ? (
             <InputDialog
               title={dialog.title}
@@ -331,19 +442,26 @@ export function ProvidersView({
               width={width}
               onSubmit={(values) => {
                 const name = values['name'] ?? ''
+                const type = (values['type'] || 'remote') as 'remote' | 'local'
                 const url = values['url'] ?? ''
-                const prefix = values['prefix'] ?? ''
+                const group = values['group'] ?? ''
+                const intervalText = (values['interval'] ?? '').trim()
+                const interval = intervalText ? Number(intervalText) : 0
+                const fields = {
+                  name,
+                  type,
+                  url,
+                  group: group || undefined,
+                  interval,
+                }
                 if (dialog.submitLabel === 'add') {
                   void runFlow('添加订阅', ADD_STEPS, async (onProgress) => {
-                    const result = await addSubscription(
-                      { name, url, prefix: prefix || undefined },
-                      { ...deps, onProgress },
-                    )
+                    const result = await addSubscription(fields, { ...deps, onProgress })
                     return result.warnings[0] ?? `已添加订阅 ${name}`
                   })
                 } else {
                   void runFlow('编辑订阅', EDIT_STEPS, async (onProgress) => {
-                    const result = await editSubscriptionPrefix(name, prefix || undefined, {
+                    const result = await editSubscription(current?.name ?? name, fields, {
                       ...deps,
                       onProgress,
                     })
@@ -351,7 +469,7 @@ export function ProvidersView({
                       setDialog({ type: 'none' })
                       return '未做修改'
                     }
-                    return result.warnings[0] ?? `已更新订阅 ${name} 的前缀`
+                    return result.warnings[0] ?? `已更新订阅 ${name}`
                   })
                 }
               }}
@@ -391,7 +509,7 @@ export function ProvidersView({
           ) : null}
         </Box>
       ) : (
-        <>
+        <Box flexDirection="column" flexGrow={1}>
           {/* 非展开且无错误盒时主列表撑满到页脚（对齐日志/连接页的底框贴底）；
               row 包裹层让交叉轴 stretch 拉伸 Panel，fillHeight 随之生效 */}
           <Box flexDirection="row" flexGrow={expanded || current?.error ? undefined : 1}>
@@ -478,7 +596,7 @@ export function ProvidersView({
               />
             </Box>
           ) : null}
-        </>
+        </Box>
       )}
 
       <Box paddingLeft={1}>

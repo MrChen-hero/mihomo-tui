@@ -5,10 +5,21 @@
 export interface Subscription {
   /** 字母数字与 -_；同时用作 provider 名与缓存文件名 */
   name: string
-  /** 订阅地址，含 token，任何展示与日志必须经 redactUrl 脱敏 */
-  url: string
+  /**
+   * 订阅来源：remote 按 URL 拉取（http provider），local 读本地 YAML（file provider）。
+   * 旧清单没有该字段，读取时缺省为 remote。
+   */
+  type: 'remote' | 'local'
+  /** 订阅地址，含 token，任何展示与日志必须经 redactUrl 脱敏；type=local 时为空 */
+  url?: string
   /** 节点名统一前缀，如 '[Y] ' */
   prefix?: string
+  /** 分组标签，只用于界面归类，不参与骨架生成 */
+  group?: string
+  /** 自动更新间隔（分钟）；空或 0 表示禁用自动更新 */
+  interval?: number
+  /** 远程订阅被手动编辑后锁定：改为读本地文件，禁止自动拉取覆盖 */
+  locked?: boolean
 }
 
 export interface SubscriptionsFile {

@@ -124,12 +124,13 @@ describe('InputDialog 渲染与交互', () => {
     const text = textOf(terminal.frames())
     expect(text).toContain('添加订阅')
     expect(text).toContain('订阅名称')
-    expect(text).toContain('<my-airport>')
+    expect(text).toContain('my-airport')
     expect(text).toContain('ESC 取消')
     // 槽位范式：字段标题内嵌槽位顶线（无 ❯ 前缀），非聚焦字段同样有框
     expect(text).toContain('╭─ 订阅名称')
     expect(text).toContain('╭─ 订阅 URL')
-    expect(text).toContain('支持整串粘贴')
+    expect(text).toContain('Enter')
+    expect(text).toContain('确认')
   })
 
   it('键入追加到当前字段；secret 字段以 * 回显', async () => {

@@ -11,6 +11,7 @@
  * 重启后的 1.5s 宽限等待与 sleep 都可注入，测试无需真实计时。
  */
 import YAML from 'yaml'
+import { existsSync, writeFileSync } from 'node:fs'
 import type { AppConfig } from '../config.js'
 import { ConfigManager } from './manager.js'
 import { ServiceManager } from './service.js'
@@ -18,6 +19,7 @@ import { buildSkeleton } from './skeleton.js'
 import {
   isDuplicateName,
   loadSubscriptions,
+  prefixFromName,
   saveSubscriptions,
   validateSubscription,
 } from './subscriptions.js'
@@ -82,8 +84,25 @@ export const EDIT_STEPS: Step[] = ADD_STEPS
 
 export interface AddSubscriptionInput {
   name: string
-  url: string
+  url?: string
   prefix?: string
+  /** 缺省 remote，保持旧调用兼容 */
+  type?: 'remote' | 'local'
+  group?: string
+  /** 自动更新间隔（分钟），空表示禁用 */
+  interval?: number
+}
+
+/** 编辑订阅的可改字段；name 变化即触发重命名 */
+export interface EditSubscriptionInput {
+  name?: string
+  url?: string
+  prefix?: string
+  type?: 'remote' | 'local'
+  group?: string
+  interval?: number
+  /** 传 null 表示清除锁定、恢复自动更新 */
+  locked?: boolean | null
 }
 
 export interface ChangeResult {
@@ -245,14 +264,99 @@ export async function addSubscription(
 ): Promise<ChangeResult> {
   const oldSubs = loadSubscriptions(deps.subscriptionsPath)
   emitValidate(deps, ADD_STEPS)
-  const validated = validateSubscription(input)
+  const validated = validateSubscription({ ...input, prefix: prefixFromName(input.name) })
   if (!validated.ok) {
     throw new SubscriptionError(validated.error, 'validate')
   }
   if (isDuplicateName(validated.data.name, oldSubs)) {
     throw new SubscriptionError(`订阅名称 "${validated.data.name}" 已存在`, 'validate')
   }
+  const manager = deps.manager ?? new ConfigManager()
+  // 本地订阅需要一份内容文件作为 file provider 的起点
+  if (validated.data.type === 'local') ensureLocalProxyFile(manager, validated.data.name)
   return applyChange(oldSubs, sortSubs([...oldSubs, validated.data]), ADD_STEPS, deps)
+}
+
+/**
+ * 编辑订阅：可改名称（重命名）、类型、URL、前缀、分组、更新间隔与锁定状态。
+ * 重命名会迁移 provider 缓存文件，失败时连同配置一起回滚。
+ */
+export async function editSubscription(
+  name: string,
+  input: EditSubscriptionInput,
+  deps: ServiceDeps = {},
+): Promise<ChangeResult> {
+  const oldSubs = loadSubscriptions(deps.subscriptionsPath)
+  emitValidate(deps, EDIT_STEPS)
+  const target = oldSubs.find((sub) => sub.name === name)
+  if (!target) {
+    throw new SubscriptionError(`订阅 "${name}" 不存在`, 'validate')
+  }
+
+  const merged: Partial<Subscription> = { ...target }
+  if (input.name !== undefined) merged.name = input.name
+  if (input.type !== undefined) merged.type = input.type
+  if (input.url !== undefined) merged.url = input.url
+  if (input.group !== undefined) merged.group = input.group
+  if (input.interval !== undefined) merged.interval = input.interval
+  if (input.locked !== undefined) merged.locked = input.locked === null ? undefined : input.locked
+  // 前缀由名字派生，不接受手工设置；名字变了前缀跟着变
+  if (merged.name) merged.prefix = prefixFromName(merged.name)
+  // 切到本地类型时清空远程专属字段
+  if (merged.type === 'local') {
+    merged.url = undefined
+    merged.interval = undefined
+    merged.locked = undefined
+  }
+
+  const validated = validateSubscription(merged)
+  if (!validated.ok) {
+    throw new SubscriptionError(validated.error, 'validate')
+  }
+  const next = validated.data
+  const renaming = next.name !== target.name
+  if (renaming && isDuplicateName(next.name, oldSubs.filter((sub) => sub.name !== name))) {
+    throw new SubscriptionError(`订阅名称 "${next.name}" 已存在`, 'validate')
+  }
+  if (JSON.stringify(next) === JSON.stringify(target)) {
+    return { warnings: [], unchanged: true }
+  }
+
+  const manager = deps.manager ?? new ConfigManager()
+  if (renaming) manager.renameProviderCache(target.name, next.name)
+  if (next.type === 'local') ensureLocalProxyFile(manager, next.name)
+
+  try {
+    const newSubs = oldSubs.map((sub) => (sub.name === name ? next : sub))
+    const result = await applyChange(oldSubs, sortSubs(newSubs), EDIT_STEPS, deps)
+    return { ...result, unchanged: false }
+  } catch (err) {
+    // 事务失败：把已改名的缓存文件改回去（applyChange 只管 config 与清单）
+    if (renaming) {
+      try {
+        manager.renameProviderCache(next.name, target.name)
+      } catch {
+        // 改回失败不掩盖原始错误
+      }
+    }
+    throw err
+  }
+}
+
+/** 编辑订阅前缀的兼容入口（只改前缀，名称与 URL 不动）。 */
+export async function editSubscriptionPrefix(
+  name: string,
+  prefix: string | undefined,
+  deps: ServiceDeps = {},
+): Promise<ChangeResult> {
+  return editSubscription(name, { prefix }, deps)
+}
+
+/** 本地订阅的内容文件：不存在时创建空的 proxies 骨架。 */
+function ensureLocalProxyFile(manager: ConfigManager, name: string): void {
+  manager.ensureProvidersDir()
+  const path = manager.providerCachePath(name)
+  if (!existsSync(path)) writeFileSync(path, 'proxies: []\n', 'utf8')
 }
 
 /** 删除订阅（含清理 provider 缓存文件；最后一个订阅不允许删）。 */
@@ -279,30 +383,4 @@ export async function deleteSubscription(
   const cacheStep = DELETE_STEPS.at(-1)
   if (cacheStep) deps.onProgress?.(cacheStep, DELETE_STEPS.slice(0, -1))
   return result
-}
-
-/** 编辑订阅：只允许改节点名前缀（设计稿 1.1，名称与 URL 不可编辑）。 */
-export async function editSubscriptionPrefix(
-  name: string,
-  prefix: string | undefined,
-  deps: ServiceDeps = {},
-): Promise<ChangeResult> {
-  const oldSubs = loadSubscriptions(deps.subscriptionsPath)
-  emitValidate(deps, EDIT_STEPS)
-  const target = oldSubs.find((sub) => sub.name === name)
-  if (!target) {
-    throw new SubscriptionError(`订阅 "${name}" 不存在`, 'validate')
-  }
-  // 前缀的尾随空格是有意义的（如 '[Y] HK-1'），不能 trim；纯空白视为清除
-  const normalized = prefix !== undefined && prefix.trim() === '' ? undefined : prefix
-  if (target.prefix === normalized) {
-    return { warnings: [], unchanged: true }
-  }
-  const validated = validateSubscription({ ...target, prefix: normalized })
-  if (!validated.ok) {
-    throw new SubscriptionError(validated.error, 'validate')
-  }
-  const newSubs = oldSubs.map((sub) => (sub.name === name ? validated.data : sub))
-  const result = await applyChange(oldSubs, newSubs, EDIT_STEPS, deps)
-  return { ...result, unchanged: false }
 }

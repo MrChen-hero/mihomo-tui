@@ -16,14 +16,15 @@ import {
   SubscriptionError,
   addSubscription,
   deleteSubscription,
+  editSubscription,
   editSubscriptionPrefix,
 } from '../subscriptionService.js'
 import type { ServiceDeps, Step } from '../subscriptionService.js'
 import type { Subscription } from '../types.js'
 
-const ALPHA: Subscription = { name: 'alpha', url: 'https://alpha.example/sub?token=aaaa' }
-const BETA: Subscription = { name: 'beta', url: 'https://beta.example/sub?token=bbbb', prefix: '[B] ' }
-const GAMMA: Subscription = { name: 'gamma', url: 'https://gamma.example/sub?token=cccc' }
+const ALPHA: Subscription = { name: 'alpha', type: 'remote', url: 'https://alpha.example/sub?token=aaaa' }
+const BETA: Subscription = { name: 'beta', type: 'remote', url: 'https://beta.example/sub?token=bbbb', prefix: '[B] ' }
+const GAMMA: Subscription = { name: 'gamma', type: 'remote', url: 'https://gamma.example/sub?token=cccc' }
 
 let root: string
 let mihomoDir: string
@@ -191,30 +192,98 @@ describe('deleteSubscription 删除订阅', () => {
   })
 })
 
-describe('editSubscriptionPrefix 编辑前缀', () => {
-  it('改前缀：配置中的 additional-prefix 同步更新', async () => {
-    const { deps } = harness()
-    const result = await editSubscriptionPrefix('beta', '[BB] ', deps)
+describe('editSubscription 编辑订阅', () => {
+  const provider = (name: string): Record<string, unknown> =>
+    YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))['proxy-providers'][name]
+
+  it('重命名：清单、provider key 与缓存文件一起迁移', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    const result = await editSubscription('beta', { name: 'beta-renamed' }, deps)
     expect(result.unchanged).toBe(false)
-    const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
-    expect(config['proxy-providers']?.beta?.override?.['additional-prefix']).toBe('[BB] ')
-    expect(subNames()).toEqual(['alpha', 'beta'])
+    expect(subNames()).toContain('beta-renamed')
+    expect(subNames()).not.toContain('beta')
+    expect(provider('beta-renamed')).toBeTruthy()
+    expect(existsSync(join(mihomoDir, 'providers', 'beta-renamed.yaml'))).toBe(true)
+    expect(existsSync(join(mihomoDir, 'providers', 'beta.yaml'))).toBe(false)
   })
 
-  it('前缀无变化时是 no-op：不重启、不备份', async () => {
-    const { deps, restartCount } = harness()
-    const result = await editSubscriptionPrefix('beta', '[B] ', deps)
+  it('重命名失败时缓存文件改回旧名', async () => {
+    const { deps } = harness({ mihomoFails: true })
+    await expect(editSubscription('beta', { name: 'beta-renamed' }, deps)).rejects.toThrow()
+    expect(existsSync(join(mihomoDir, 'providers', 'beta.yaml'))).toBe(true)
+    expect(existsSync(join(mihomoDir, 'providers', 'beta-renamed.yaml'))).toBe(false)
+    expect(subNames()).toContain('beta')
+  })
+
+  it('重命名为已存在的名字被拒绝', async () => {
+    const { deps } = harness()
+    await expect(editSubscription('beta', { name: 'alpha' }, deps)).rejects.toThrow(/已存在/)
+  })
+
+  it('设置分组与更新间隔：interval 按分钟换算成秒写入', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    await editSubscription('alpha', { group: '香港专线', interval: 30 }, deps)
+    const saved = YAML.parse(readFileSync(subsPath, 'utf8')).subscriptions.find(
+      (s: Subscription) => s.name === 'alpha',
+    )
+    expect(saved.group).toBe('香港专线')
+    expect(saved.interval).toBe(30)
+    expect(provider('alpha').interval).toBe(1800)
+  })
+
+  it('切换为本地类型：清空 url，provider 改为 file，并保留已有缓存文件', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    await editSubscription('beta', { type: 'local' }, deps)
+    const saved = YAML.parse(readFileSync(subsPath, 'utf8')).subscriptions.find(
+      (s: Subscription) => s.name === 'beta',
+    )
+    expect(saved.type).toBe('local')
+    expect(saved.url).toBeUndefined()
+    expect(provider('beta').type).toBe('file')
+    expect(readFileSync(join(mihomoDir, 'providers', 'beta.yaml'), 'utf8')).toContain('beta cache')
+  })
+
+  it('新增本地订阅：创建空的 proxies 骨架文件', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    await addSubscription({ name: 'mylocal', type: 'local' }, deps)
+    expect(readFileSync(join(mihomoDir, 'providers', 'mylocal.yaml'), 'utf8')).toBe('proxies: []\n')
+    expect(provider('mylocal').type).toBe('file')
+  })
+
+  it('锁定远程订阅：provider 改为 file 且 interval 为 0', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    await editSubscription('alpha', { locked: true, interval: 60 }, deps)
+    const saved = YAML.parse(readFileSync(subsPath, 'utf8')).subscriptions.find(
+      (s: Subscription) => s.name === 'alpha',
+    )
+    expect(saved.locked).toBe(true)
+    expect(provider('alpha')).toMatchObject({ type: 'file', interval: 0 })
+  })
+
+  it('无实际变化时是 no-op', async () => {
+    const { deps, restartCount } = harness({ afterRestart: 'active' })
+    const result = await editSubscription('beta', { prefix: '[B] ' }, deps)
     expect(result.unchanged).toBe(true)
     expect(restartCount()).toBe(0)
-    expect(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8')).toBe(originalConfigText)
+  })
+})
+
+describe('editSubscriptionPrefix 前缀由名字派生', () => {
+  it('传入的前缀被忽略，统一按名字派生', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    await editSubscriptionPrefix('beta', '[BB] ', deps)
+    const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
+    expect(config['proxy-providers']?.beta?.override?.['additional-prefix']).toBe('[B] ')
   })
 
-  it('清除前缀（传空）与编辑不存在的订阅', async () => {
-    const { deps } = harness()
-    const cleared = await editSubscriptionPrefix('beta', '   ', deps)
-    expect(cleared.unchanged).toBe(false)
+  it('重命名后前缀跟随新名字', async () => {
+    const { deps } = harness({ afterRestart: 'active' })
+    await editSubscription('beta', { name: 'zeta' }, deps)
     const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
-    expect(config['proxy-providers']?.beta?.override).toBeUndefined()
+    expect(config['proxy-providers']?.zeta?.override?.['additional-prefix']).toBe('[Z] ')
+  })
+
+  it('编辑不存在的订阅抛错', async () => {
     await expect(editSubscriptionPrefix('ghost', '[X] ', harness().deps)).rejects.toThrow(/不存在/)
   })
 })

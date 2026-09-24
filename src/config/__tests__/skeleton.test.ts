@@ -13,8 +13,8 @@ import {
 } from '../skeleton.js'
 import type { Subscription } from '../types.js'
 
-const ALPHA: Subscription = { name: 'alpha', url: 'https://a.example.com/sub?token=aaa' }
-const BETA: Subscription = { name: 'beta', url: 'https://b.example.com/sub?token=bbb', prefix: '[B] ' }
+const ALPHA: Subscription = { name: 'alpha', type: 'remote', url: 'https://a.example.com/sub?token=aaa' }
+const BETA: Subscription = { name: 'beta', type: 'remote', url: 'https://b.example.com/sub?token=bbb', prefix: '[B] ' }
 
 /** 一个最小但合法的旧配置（字段类型混合，考验守卫） */
 function oldConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -34,13 +34,13 @@ describe('subscriptionDirectRules 订阅直连规则', () => {
   it('提取主机名、去重、排序、固定 DIRECT', () => {
     const rules = subscriptionDirectRules([
       ALPHA,
-      { name: 'beta2', url: 'https://b.example.com/other?token=x' },
+      { name: 'beta2', type: 'remote', url: 'https://b.example.com/other?token=x' },
     ])
     expect(rules).toEqual(['DOMAIN,a.example.com,DIRECT', 'DOMAIN,b.example.com,DIRECT'])
   })
 
   it('非法 URL 被忽略而不是崩掉', () => {
-    const rules = subscriptionDirectRules([{ name: 'bad', url: 'not-a-url' }])
+    const rules = subscriptionDirectRules([{ name: 'bad', type: 'remote', url: 'not-a-url' }])
     expect(rules).toEqual([])
   })
 })
@@ -84,7 +84,7 @@ describe('buildProviders', () => {
       type: 'http',
       url: BETA.url,
       path: './providers/beta.yaml',
-      interval: 3600,
+      interval: 0,
       'exclude-filter': EXCLUDE_FILTER,
       override: { 'additional-prefix': '[B] ' },
       'health-check': { enable: true, url: 'https://www.gstatic.com/generate_204', interval: 300, lazy: true },
@@ -100,6 +100,25 @@ describe('buildProviders', () => {
     const providers = buildProviders([ALPHA], 'http://no/204')
     const health = (providers['alpha'] as Record<string, unknown>)['health-check'] as Record<string, unknown>
     expect(health.url).toBe('http://no/204')
+  })
+
+  it('interval 以分钟存储、按秒写入；缺省为 0（禁用自动更新）', () => {
+    const providers = buildProviders([{ ...ALPHA, interval: 30 }])
+    expect((providers['alpha'] as Record<string, unknown>).interval).toBe(1800)
+  })
+
+  it('本地订阅生成 file provider，不含 url', () => {
+    const providers = buildProviders([{ name: 'mylocal', type: 'local' }])
+    expect(providers['mylocal']).toMatchObject({ type: 'file', path: './providers/mylocal.yaml', interval: 0 })
+    expect(providers['mylocal'] && 'url' in providers['mylocal']).toBe(false)
+  })
+
+  it('锁定的远程订阅改为 file provider 且 interval 为 0，防止拉取覆盖手改', () => {
+    const providers = buildProviders([{ ...ALPHA, locked: true, interval: 60 }])
+    const provider = providers['alpha'] as Record<string, unknown>
+    expect(provider.type).toBe('file')
+    expect(provider.interval).toBe(0)
+    expect('url' in provider).toBe(false)
   })
 })
 

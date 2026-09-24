@@ -23,7 +23,7 @@ import { FooterLine } from '../ui/FooterLine.js'
 import { MIN_PANEL_WIDTH, Panel, TOP_PREFIX, panelTopParts } from '../ui/Panel.js'
 import { colors } from '../ui/theme.js'
 import { useRef, useState, type ReactNode } from 'react'
-import { displayWidth } from '../commands/output.js'
+import { displayWidth, truncateDisplay } from '../commands/output.js'
 import { useKeyCapture } from '../ui/keyCapture.js'
 
 export interface InputField {
@@ -199,22 +199,17 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
       moveTo(activeRef.current + 1)
       return
     }
+    // Enter 提交整表（与列表页「Enter = 确认当前操作」一致）；
+    // 字段间移动用 ↑↓，不复用 Enter 做「下一项」
     if (key.return) {
-      // 当前字段还有错：停在原地（attempted 后错误可见）
-      const activeKey = fields[activeRef.current]?.key ?? ''
-      if (allErrors(fields, valuesRef.current)[activeKey]) {
-        setAttempted(true)
-        return
-      }
-      if (activeRef.current < fields.length - 1) {
-        moveTo(activeRef.current + 1)
-        return
-      }
-      // 最后一个字段：整表合法才提交
       if (isFormValid(fields, valuesRef.current)) {
         onSubmit({ ...valuesRef.current })
       } else {
         setAttempted(true)
+        // 跳到第一个有错误的字段，让问题就地可见
+        const current = allErrors(fields, valuesRef.current)
+        const firstInvalid = fields.findIndex((field) => current[field.key] !== undefined)
+        if (firstInvalid >= 0) moveTo(firstInvalid)
       }
       return
     }
@@ -273,7 +268,9 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   const tried = attempted
   // 居中窄卡片（spec 2026-09-13 §5.3）：min(64, max(44, width-8))；
   // 终端窄于 44 列时退化为全宽（无居中），保可用性
-  const cardWidth = width < 44 ? width : Math.min(64, Math.max(44, width - 8))
+  // 字段多时卡片变高，收窄宽度换取纵向空间，避免撑出屏幕
+  const cardWidth =
+    width < 44 ? width : Math.min(fields.length > 4 ? 56 : 64, Math.max(44, width - 8))
   // 字段槽位宽：卡片 Panel 边框 2 + paddingX 2；输入盒内可用列再减槽位边框 2 + paddingX 2
   const slotWidth = Math.max(0, cardWidth - 4)
   const innerWidth = Math.max(10, cardWidth - 8)
@@ -288,7 +285,9 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   const renderSlotContent = (field: InputField, value: string, isActive: boolean): ReactNode => {
     if (!isActive) {
       const display = field.secret ? '*'.repeat(value.length) : value
-      return <Text dimColor>{display || (field.placeholder ? `<${field.placeholder}>` : '—')}</Text>
+      // 未聚焦时按显示宽度截断到一行，超长值（订阅 URL）尾部省略，避免撑高槽位
+      const shown = truncateDisplay(display, innerWidth) || (field.placeholder ?? '—')
+      return <Text dimColor wrap="truncate">{shown}</Text>
     }
     const display = field.secret ? '*'.repeat(value.length) : value
     const windowed = value
@@ -309,16 +308,17 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
         ) : (
           <>
             <Text inverse>{' '}</Text>
-            {field.placeholder ? <Text dimColor>{` <${field.placeholder}>`}</Text> : null}
+            {field.placeholder ? <Text dimColor>{field.placeholder}</Text> : null}
           </>
         )}
       </Text>
     )
   }
 
-  /** 字段槽位（spec 2026-09-13 dialogs-topbar-polish §3.2）：恒 3 行的内嵌标题
-   * mini-Panel。聚焦 accent 亮起（invalid 转 danger），非聚焦/readOnly 退后为
-   * surfaceBorder + dim。顶线复用 panelTopParts 的截断/宽度逻辑。 */
+  /** 字段槽位：恒 3 行的内嵌标题 mini-Panel。聚焦 accent 亮起（invalid 转
+   * danger），非聚焦/readOnly 退后为 surfaceBorder + dim。顶线复用
+   * panelTopParts 的截断/宽度逻辑。marginTop 只加在首个字段之前，字段之间
+   * 紧贴，保证多字段时卡片高度一致、不靠字段数撑出参差空白。 */
   const renderSlot = (field: InputField, value: string, index: number): ReactNode => {
     const isActive = index === active && !field.readOnly
     const invalid = tried && isActive && errors[field.key] !== undefined
@@ -335,7 +335,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     const starSuffix = field.required && parts.title.endsWith(' *')
     const labelShown = starSuffix ? parts.title.replace(/ \*$/, '') : parts.title
     return (
-      <Box key={field.key} flexDirection="column" marginTop={1} width={slotWidth}>
+      <Box key={field.key} flexDirection="column" marginTop={index === 0 ? 1 : 0} width={slotWidth}>
         {slotWidth < MIN_PANEL_WIDTH ? (
           <>
             <Text {...labelStyle}>{fullTitle}</Text>
@@ -369,15 +369,12 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
       {fields.map((field, index) => renderSlot(field, values[field.key] ?? '', index))}
       <Box marginTop={1} flexDirection="column">
         {shownError ? <Text color={colors.danger}>{`⚠ ${shownError}`}</Text> : null}
-        {/* Enter 文案随位置切换：末项=提交，其余=下一项（与实际按键行为一致） */}
         <FooterLine
           hints={[
-            { key: 'Enter', label: active === fields.length - 1 ? '提交' : '下一项' },
+            { key: 'Enter', label: '确认' },
             { key: '↑↓', label: '切换' },
-            { key: 'Ctrl+U', label: '清空' },
             { key: 'ESC', label: '取消' },
           ]}
-          global="支持整串粘贴"
           width={cardWidth - 4}
         />
       </Box>

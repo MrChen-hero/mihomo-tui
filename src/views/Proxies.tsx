@@ -13,11 +13,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { DelayBadge, spinnerFrame } from '../components/DelayBadge.js'
 import { ScrollList } from '../components/ScrollList.js'
+import { loadSubscriptions } from '../config/subscriptions.js'
+import type { Subscription } from '../config/types.js'
 import { FooterLine, type FooterHint } from '../ui/FooterLine.js'
 import { Panel } from '../ui/Panel.js'
 import { colors, styles } from '../ui/theme.js'
 import { fitDisplay, truncateDisplay } from '../commands/output.js'
-import type { GroupRow, NodeRow, UseProxiesResult } from '../hooks/useProxies.js'
+import type { NodeRow, UseProxiesResult } from '../hooks/useProxies.js'
+import { buildGroupDisplay, type DisplayRow } from './groupDisplay.js'
 
 export interface ProxiesViewProps {
   proxies: UseProxiesResult
@@ -91,11 +94,28 @@ export function ProxiesView({
   const [onlyAlive, setOnlyAlive] = useState(false)
   // 默认按延迟排序：可用节点浮到顶部，直接对应「保证节点可用」的诉求
   const [sortByDelay, setSortByDelay] = useState(true)
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
 
-  // 只显示 AUTO 与全部机场组（机场- 前缀，动态跟随订阅增删）
-  const visibleGroups = proxies.groups
+  // 订阅清单决定左侧分组归拢；读取失败时退化为全部未分组
+  useEffect(() => {
+    try {
+      setSubscriptions(loadSubscriptions())
+    } catch {
+      setSubscriptions([])
+    }
+  }, [proxies.groups])
 
-  const currentGroup: GroupRow | undefined = visibleGroups[Math.min(groupIndex, visibleGroups.length - 1)]
+  // 左侧按订阅分组归拢：组头行 + `分组名 - 订阅名`。只改显示，
+  // currentGroup 仍取真实代理组，选中与切换逻辑不变。
+  const displayRows = useMemo(
+    () => buildGroupDisplay(proxies.groups, subscriptions),
+    [proxies.groups, subscriptions],
+  )
+  const selectableRows = displayRows.filter((row) => !row.header)
+
+  const currentRow: DisplayRow | undefined =
+    selectableRows[Math.min(groupIndex, selectableRows.length - 1)]
+  const currentGroup = currentRow?.group
 
   const allNodes = useMemo(
     () => (currentGroup ? proxies.nodesOf(currentGroup.name) : []),
@@ -137,7 +157,7 @@ export function ProxiesView({
         return
       }
       if (key.downArrow || input === 'j') {
-        if (focus === 'groups') setGroupIndex((i) => Math.min(visibleGroups.length - 1, i + 1))
+        if (focus === 'groups') setGroupIndex((i) => Math.min(selectableRows.length - 1, i + 1))
         else setNodeIndex((i) => Math.min(nodes.length - 1, i + 1))
         return
       }
@@ -245,28 +265,32 @@ export function ProxiesView({
   // 保证标题里即便有宽理解分歧的 emoji 也不会把顶线挤折行。
   const title = truncateDisplay(rawTitle, Math.max(1, nodePanelWidth - 9))
 
-  const groupTitle = `代理组 · ${visibleGroups.length}`
+  const groupTitle = `代理组 · ${selectableRows.length}`
   const groupPanel = (
     <Panel title={groupTitle} width={groupPanelWidth} fillHeight>
       <ScrollList
-        items={visibleGroups}
-        selected={groupIndex}
+        items={displayRows}
+        selected={displayRows.findIndex((row) => row.key === currentRow?.key)}
         height={listHeight}
         emptyText="无可用代理组"
-        renderItem={(group, index, isSelected) => (
-          <Text>
-            <Text color={rowBarColor(isSelected, focus === 'groups')}>
-              {rowBar(isSelected, focus === 'groups')}
+        renderItem={(row, _index, isSelected) =>
+          row.header ? (
+            <Text dimColor>{` ─ ${fitDisplay(row.label, groupNameBudget)}`}</Text>
+          ) : (
+            <Text>
+              <Text color={rowBarColor(isSelected, focus === 'groups')}>
+                {rowBar(isSelected, focus === 'groups')}
+              </Text>
+              {proxies.rawProxies['PROXY']?.now === row.group?.name ? (
+                <Text {...styles.rowSelected}>●</Text>
+              ) : (
+                ' '
+              )}
+              {` ${fitDisplay(row.label, groupNameBudget)}`}
+              <Text dimColor>{` ${row.group?.aliveCount ?? 0}/${row.group?.nodeCount ?? 0}`}</Text>
             </Text>
-            {proxies.rawProxies['PROXY']?.now === group.name ? (
-              <Text {...styles.rowSelected}>●</Text>
-            ) : (
-              ' '
-            )}
-            {` ${fitDisplay(group.name, groupNameBudget)}`}
-            <Text dimColor>{` ${group.aliveCount}/${group.nodeCount}`}</Text>
-          </Text>
-        )}
+          )
+        }
       />
     </Panel>
   )
