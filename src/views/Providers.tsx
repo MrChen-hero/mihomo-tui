@@ -57,6 +57,26 @@ export function usageBar(
   return { text: progressBar(fraction, barWidth), tone }
 }
 
+/** 类型字段：固定二选一，Enter 打开选项列表 */
+const TYPE_OPTIONS = [
+  { value: 'remote', label: 'remote  远程（按 URL 拉取）' },
+  { value: 'local', label: 'local   本地（编辑 YAML 文件）' },
+]
+
+/** 读取订阅清单；文件缺失或损坏时按空清单处理（新增场景允许从零开始） */
+function loadKnown(path?: string): Subscription[] {
+  try {
+    return loadSubscriptions(path)
+  } catch {
+    return []
+  }
+}
+
+/** 已有订阅的分组名，去重排序，供分组字段提示 */
+function knownGroups(subs: Subscription[]): string[] {
+  return [...new Set(subs.map((sub) => sub.group).filter((group): group is string => !!group))].sort()
+}
+
 const HINTS: FooterHint[] = [
   { key: '↑↓', label: '移动' },
   { key: 'a', label: '新增' },
@@ -162,34 +182,24 @@ export function ProvidersView({
   }
 
   const openAddDialog = (): void => {
+    const known = loadKnown()
     setDialog({
       type: 'input',
       title: '添加订阅',
       submitLabel: 'add',
       fields: [
         {
-          label: '类型（remote 远程 / local 本地）',
+          label: '类型',
           key: 'type',
-          placeholder: 'remote',
-          validate: (value) =>
-            value && value !== 'remote' && value !== 'local'
-              ? '类型只能是 remote 或 local'
-              : undefined,
+          value: 'remote',
+          options: TYPE_OPTIONS,
         },
         {
           label: '订阅名称',
           key: 'name',
           placeholder: 'my-airport',
           required: true,
-          validate: (value) => {
-            let known: Subscription[] = []
-            try {
-              known = loadSubscriptions(deps.subscriptionsPath)
-            } catch {
-              known = []
-            }
-            return validateNameInput(value, known)
-          },
+          validate: (value) => validateNameInput(value, known),
         },
         {
           label: '订阅 URL（本地订阅留空）',
@@ -204,8 +214,9 @@ export function ProvidersView({
           validate: validateIntervalInput,
         },
         {
-          label: '分组（可选）',
+          label: '分组（可选，e 选择已有）',
           key: 'group',
+          suggestions: knownGroups(known).map((group) => ({ value: group, label: group })),
           placeholder: '如 香港专线',
           validate: validateGroupInput,
         },
@@ -227,11 +238,10 @@ export function ProvidersView({
       submitLabel: 'edit',
       fields: [
         {
-          label: '类型（remote 远程 / local 本地）',
+          label: '类型',
           key: 'type',
           value: sub?.type ?? 'remote',
-          validate: (value) =>
-            value !== 'remote' && value !== 'local' ? '类型只能是 remote 或 local' : undefined,
+          options: TYPE_OPTIONS,
         },
         {
           label: '订阅名称（修改即重命名）',
@@ -261,9 +271,13 @@ export function ProvidersView({
           validate: validateIntervalInput,
         },
         {
-          label: '分组（可选）',
+          label: '分组（可选，e 选择已有）',
           key: 'group',
           value: sub?.group ?? '',
+          suggestions: knownGroups(
+            loadKnown(deps.subscriptionsPath).filter((s) => s.name !== current.name),
+          ).map((group) => ({ value: group, label: group })),
+          placeholder: '如 香港专线',
           validate: validateGroupInput,
         },
       ],
