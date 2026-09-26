@@ -1,5 +1,5 @@
 /**
- * Ink 根组件：五个标签页 + 全局快捷键 + 底部状态栏。
+ * Ink 根组件：六个标签页 + 全局快捷键 + 底部状态栏。
  *
  * 退出必须显式 process.exit —— mihomo 不回应 WebSocket close 帧，
  * 句柄不释放，事件循环永不为空（SPEC 3.6）。
@@ -18,14 +18,16 @@ import { Panel } from './ui/Panel.js'
 import { FooterLine } from './ui/FooterLine.js'
 import { colors } from './ui/theme.js'
 import { keysCaptured } from './ui/keyCapture.js'
+import { requestGuardedExit } from './ui/exitGuard.js'
 import { ConfirmDialog } from './components/ConfirmDialog.js'
 import { ProxiesView } from './views/Proxies.js'
 import { ProvidersView } from './views/Providers.js'
+import { RulesView } from './views/Rules.js'
 import { LogsView } from './views/Logs.js'
 import { ConnsView } from './views/Conns.js'
 import { SettingsView } from './views/Settings.js'
 
-const TABS = ['节点', '订阅', '日志', '连接', '设置'] as const
+const TABS = ['节点', '订阅', '规则', '日志', '连接', '设置'] as const
 
 const MODE_NAMES: Record<string, string> = { rule: '规则', global: '全局', direct: '直连' }
 
@@ -74,8 +76,8 @@ export function App({ config, version, mode }: AppProps) {
   const providers = useProviders(config)
   const status = useStatusStream(config)
   // 日志与连接流只在对应标签页可见时渲染，避免在其他页被高频数据带着重渲染
-  const logs = useLogStream(config, logLevel, tab === 2)
-  const connections = useConnectionsStream(config, tab === 3)
+  const logs = useLogStream(config, logLevel, tab === 3)
+  const connections = useConnectionsStream(config, tab === 4)
 
   // spinner 心跳只在真的有东西转的时候才跑 —— 否则整个 App 每 120ms 重渲染一次，
   // 纯属白烧 CPU 与制造垃圾
@@ -87,9 +89,9 @@ export function App({ config, version, mode }: AppProps) {
   }, [spinning])
 
   useInput((input, key) => {
-    // Ctrl+C 硬退出（mihari 语义：任何层都直接退）
+    // Rule transactions register a separate guard; ordinary sessions retain hard exit.
     if (key.ctrl && input === 'c') {
-      exit()
+      if (!requestGuardedExit(exit)) exit()
       return
     }
     // 内层优先：对话框/文本编辑态/二次确认态捕获按键时全局键一律让路，
@@ -111,8 +113,8 @@ export function App({ config, version, mode }: AppProps) {
       setTab((t) => (t + 1) % TABS.length)
       return
     }
-    // 数字键 1-5 直接切换到对应标签（1=节点, 2=订阅, 3=日志, 4=连接, 5=设置）
-    if (input >= '1' && input <= '5') {
+    // 数字键 1-6 直接切换到对应标签（1=节点, 2=订阅, 3=规则, 4=日志, 5=连接, 6=设置）
+    if (input >= '1' && input <= '6') {
       const index = parseInt(input, 10) - 1
       if (index < TABS.length) {
         setTab(index)
@@ -125,7 +127,8 @@ export function App({ config, version, mode }: AppProps) {
       return
     }
     // m 键切换模式: rule -> global -> direct -> rule
-    if (input === 'm') {
+    // 规则页 m 留给本地标记，不能同时切换内核运行模式。
+    if (input === 'm' && tab !== 2) {
       const modes: Array<'rule' | 'global' | 'direct'> = ['rule', 'global', 'direct']
       const currentIndex = modes.indexOf(currentMode)
       const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length
@@ -233,10 +236,8 @@ export function App({ config, version, mode }: AppProps) {
           />
         ) : null}
         {tab === 2 ? (
-          <LogsView
-            logs={logs}
-            level={logLevel}
-            onLevelChange={setLogLevel}
+          <RulesView
+            config={config}
             height={bodyHeight}
             width={size.columns}
             active={tab === 2}
@@ -244,9 +245,10 @@ export function App({ config, version, mode }: AppProps) {
           />
         ) : null}
         {tab === 3 ? (
-          <ConnsView
-            config={config}
-            data={connections.data}
+          <LogsView
+            logs={logs}
+            level={logLevel}
+            onLevelChange={setLogLevel}
             height={bodyHeight}
             width={size.columns}
             active={tab === 3}
@@ -254,12 +256,22 @@ export function App({ config, version, mode }: AppProps) {
           />
         ) : null}
         {tab === 4 ? (
+          <ConnsView
+            config={config}
+            data={connections.data}
+            height={bodyHeight}
+            width={size.columns}
+            active={tab === 4}
+            onMessage={setMessage}
+          />
+        ) : null}
+        {tab === 5 ? (
           <SettingsView
             config={config}
             version={version}
             height={bodyHeight}
             width={size.columns}
-            active={tab === 4}
+            active={tab === 5}
             onMessage={setMessage}
           />
         ) : null}

@@ -11,6 +11,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App.js'
+import { MihomoClient } from '../api/client.js'
+import { RuleService } from '../config/ruleService.js'
+import { readRuleSnapshot } from '../config/ruleDocument.js'
 import type { AppConfig } from '../config.js'
 import { createTerminal, delay, textOf, type Terminal } from '../components/__tests__/harness.js'
 import { keysCaptured, useKeyCapture } from '../ui/keyCapture.js'
@@ -61,6 +64,60 @@ describe('keyCapture 登记表', () => {
 })
 
 describe('App 分级退出闸门', () => {
+  it('规则编辑输入与 Tab 不穿透，Ctrl+C 经草稿放弃确认后退出', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mihomo-app-rule-edit-'))
+    const path = join(dir, 'config.yaml'), subs = join(dir, 'subs.json')
+    writeFileSync(path, 'rules: ["MATCH,DIRECT"]\n')
+    writeFileSync(subs, '{"subscriptions":[{"name":"local","type":"local"}]}')
+    vi.spyOn(RuleService.prototype, 'open').mockReturnValue(readRuleSnapshot(path, subs))
+    vi.spyOn(MihomoClient.prototype, 'rules').mockResolvedValue([{ type: 'Match', payload: '', proxy: 'DIRECT' }])
+    vi.spyOn(MihomoClient.prototype, 'ruleProviders').mockResolvedValue({})
+    const mode = vi.spyOn(MihomoClient.prototype, 'setMode').mockResolvedValue(undefined)
+    const term = mountApp(); await delay(100)
+    for (const key of ['3', 'e', 'a', '\x1b[B', '\r', 'DOMAIN,aedJK123456m.example,DIRECT', '\r']) {
+      term.press(key); await delay(70)
+    }
+    expect(textOf(term.frames())).toContain('未保存')
+    expect(mode).not.toHaveBeenCalled()
+    const mark = term.frames().length
+    term.press('\t'); await delay(70)
+    expect(textOf(term.frames().slice(mark))).not.toContain('切级别')
+    term.press('\x03'); await delay(100)
+    expect(textOf(term.frames())).toContain('放弃未保存草稿并退出程序')
+    term.press('n'); await delay(70)
+    expect(keysCaptured()).toBe(true)
+    term.press('\x03'); await delay(70); term.press('y'); await delay(200)
+    const settled = term.frames().length
+    term.press('\t'); await delay(100)
+    expect(term.frames().length).toBe(settled)
+  })
+  it('规则页详情/输入 ESC 不退出，m 不穿透为全局模式修改', async () => {
+    vi.spyOn(MihomoClient.prototype, 'rules').mockResolvedValue([
+      { type: 'Domain', payload: 'example.com', proxy: 'DIRECT' },
+    ])
+    vi.spyOn(MihomoClient.prototype, 'ruleProviders').mockResolvedValue({})
+    const setMode = vi.spyOn(MihomoClient.prototype, 'setMode').mockResolvedValue(undefined)
+    const term = mountApp()
+    await delay(120)
+    term.press('3'); await delay(100)
+    term.press('m'); await delay(100)
+    expect(setMode).not.toHaveBeenCalled()
+    expect(textOf(term.frames())).toContain('[标记]')
+    term.press('\r'); await delay(100)
+    expect(keysCaptured()).toBe(true)
+    let mark = term.frames().length
+    term.press('\x1b'); await delay(100)
+    expect(keysCaptured()).toBe(false)
+    expect(textOf(term.frames().slice(mark))).not.toContain('确认退出？')
+    term.press('t'); await delay(100)
+    expect(keysCaptured()).toBe(true)
+    mark = term.frames().length
+    term.press('\x1b'); await delay(100)
+    expect(keysCaptured()).toBe(false)
+    expect(textOf(term.frames().slice(mark))).not.toContain('确认退出？')
+    term.press('4'); await delay(100)
+    expect(textOf(term.frames().slice(mark))).toContain('切级别')
+  })
   it('订阅页新增对话框中按 ESC：对话框关闭、TUI 仍存活', async () => {
     const term = mountApp()
     await delay(120)
@@ -78,10 +135,10 @@ describe('App 分级退出闸门', () => {
     expect(tail).not.toContain('订阅名称') // 对话框已关
     expect(keysCaptured()).toBe(false)
 
-    term.press('\t') // ESC 后再 Tab：应切到 [3] 日志页 = TUI 活着且在响应
+    term.press('\t') // ESC 后再 Tab：应切到 [3] 规则页 = TUI 活着且在响应
     await delay(120)
     const live = textOf(term.frames().slice(before))
-    expect(live).toContain('切级别') // [3] 日志页页脚特征；若已退出则无新帧
+    expect(live).toContain('切类型') // [3] 规则页页脚特征；若已退出则无新帧
     term.instance.unmount()
   })
 
@@ -90,7 +147,9 @@ describe('App 分级退出闸门', () => {
     await delay(120)
     term.press('\t')
     await delay(60)
-    term.press('\t') // → [3] 日志
+    term.press('\t')
+    await delay(60)
+    term.press('\t') // → [4] 日志
     await delay(60)
     term.press('/') // 进入过滤编辑
     await delay(60)
@@ -101,10 +160,10 @@ describe('App 分级退出闸门', () => {
     await delay(120)
     expect(keysCaptured()).toBe(false)
 
-    term.press('\t') // ESC 后再 Tab：应切到 [4] 连接页
+    term.press('\t') // ESC 后再 Tab：应切到 [5] 连接页
     await delay(120)
     const live = textOf(term.frames().slice(before))
-    expect(live).toContain('关闭选中') // [4] 连接页页脚特征；若已退出则无新帧
+    expect(live).toContain('关闭选中') // [5] 连接页页脚特征；若已退出则无新帧
     term.instance.unmount()
   })
 
@@ -187,7 +246,7 @@ describe('App 分级退出闸门', () => {
     term.instance.unmount()
   })
 
-  it('数字键 5 打开设置页；设置页 ESC 仍走分级退出', async () => {
+  it('数字键 6 打开设置页；设置页 ESC 仍走分级退出', async () => {
     const mihomoDir = mkdtempSync(join(tmpdir(), 'mihomo-tui-appset-'))
     writeFileSync(join(mihomoDir, 'config.yaml'), 'mode: rule\nmixed-port: 17890\nlog-level: info\n', 'utf8')
     const config: AppConfig = {
@@ -204,7 +263,7 @@ describe('App 分级退出闸门', () => {
     })
     terminals.push(term)
     await delay(150)
-    term.press('5')
+    term.press('6')
     await delay(150)
     const text = textOf(term.frames())
     expect(text).toContain('◆ 设置')

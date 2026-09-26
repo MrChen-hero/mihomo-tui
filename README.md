@@ -1,6 +1,6 @@
 # mihomo-tui
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue)](CHANGELOG.md)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -12,7 +12,7 @@ REST API 完成 —— **运行时代码绝不写 `config.yaml`**。
 
 ```txt
 ┌─ mihomo-tui ────────────────────────────────────┐
-│ [1]节点 [2]订阅 [3]日志 [4]连接      ↑↓选择 ESC退出 │
+│ [1]节点 [2]订阅 [3]规则 [4]日志 [5]连接 [6]设置    │
 ├─────────────────────────────────────────────────┤
 │ PROXY       → AUTO                              │
 │ AUTO        → [A]日本1          166ms           │
@@ -46,6 +46,7 @@ REST API 完成 —— **运行时代码绝不写 `config.yaml`**。
 - **订阅管理**：在 TUI 内直接增删改订阅（自动备份、校验、原子写入、失败回滚、
   自动重启内核），查看节点数 / 流量 / 到期时间，一键更新单个或全部订阅，
   健康检查，更新失败完整展示错误（订阅域名失效、被 403 都是常态）
+- **规则管理**：查看生效规则与 rule-providers，按类型/关键字筛选，保守测试域名/IP，支持运行时禁用；不支持禁用的内核降级为本地标记。
 - **实时监控**：WebSocket 日志流（级别切换、关键字过滤、环形缓冲 1000 行）、
   连接流（排序、关闭）、底部状态栏常驻显示内核版本 / 模式 / 速率 / 流量 / 内存
 - **模式切换**：规则 / 全局 / 直连循环切换，热重载配置无需重启内核
@@ -109,7 +110,7 @@ proxy_tui           # 无参数进入 TUI
 
 ## TUI 使用
 
-四个标签页，数字键 `1`–`4` 直接切换，`Tab` 循环，`Ctrl+C` 或 `ESC` 退出。
+六个标签页，数字键 `1`–`6` 直接切换，`Tab` 循环。`ESC` 逐层返回，在主界面弹退出确认；`Ctrl+C` 直接退出。
 
 ### [1] 节点
 
@@ -162,7 +163,35 @@ proxy_tui           # 无参数进入 TUI
 
 更新订阅失败会把完整错误显示在红框里（订阅域名失效、经代理被 403 都是常态）。
 
-### [3] 日志
+### [3] 规则
+
+规则页支持 `l` 切换类型、`/` 关键字过滤、`Enter` 查看详情、`t` 测试域名/IP、`u` 更新规则集、`d` 临时禁用/启用、`r` 刷新。规则测试无法确定时会提示需内核判定。
+
+禁用仅修改内核运行时状态，配置重载或内核重启后可能恢复。旧内核或缺少禁用字段时，使用 `m` 作会话内本地标记，**不影响实际分流和规则测试**；规则页的 `m` 不切换全局模式。
+
+本地测试支持域名和 IP 网段。遇到 `GEOIP`、`RULE-SET`、进程规则或需要 DNS 查询的规则即停止并提示“需内核判定”；命中结果只表示规则目标，不代表最终节点或真实流量路径。禁用操作与外部配置重载可能竞争，显示“结果未确认”时请刷新检查，不会自动重试。
+
+按 **`e` 打开配置规则编辑器**，编辑本机 `mihomoDir/config.yaml` 中的规则。配置草稿独立于当前生效规则，允许连续操作后统一保存；原规则页的 `d` 仍表示临时禁用。
+
+| 编辑器按键 | 操作 |
+|---|---|
+| `↑↓` / `j/k` | 选择规则 |
+| `a` / `e` / `d` | 新增 / 编辑 / 确认删除草稿规则 |
+| `J/K` | 向后 / 向前移动一条，保持选中规则身份 |
+| `/` | 按原文过滤；提交空字符串清除；过滤期间禁止新增和调序 |
+| `Enter` | 查看完整原文、路径与保护原因；`↑↓` 滚动 |
+| `Ctrl+S` | 确认后统一校验、保存并重载完整配置 |
+| `ESC` | 取消当前弹窗；有草稿时确认放弃 |
+
+常用表单覆盖域名、网段、端口、进程、`RULE-SET` 和 `MATCH`；候选字段按 `e` 选择。复杂表达式和额外参数使用单条原文，保留内部内容。`MATCH` 最多一条且须位于末尾，也允许删除它并明确提示“无显式 MATCH”。订阅直连规则按内容识别并保护；订阅清单缺失、为空、损坏或保护前缀不一致时禁止写入。
+
+保存先在独立目录校验，创建唯一的 `config.yaml.bak.*` 备份，再原子替换、写后复验、按绝对路径重载和回读确认。保留原 YAML 节点及注释，但成功序列化可能调整排版。失败恢复使用保存前的原始字节和文件权限。**重载会重新建立规则状态，临时禁用、本地标记和旧测试结果会清除。** 校验期间可以取消；正式写入至重载/恢复结束期间，`ESC`、`Ctrl+C` 和切页不会终止事务。
+
+重载已接受但回读失败时显示“已保存 · 待确认”，按 `r` 仅重新读取，不重复重载，也不允许叠加保存。恢复未完成时分别显示磁盘和内核状态及备份路径，保留草稿；处理状态后需重新打开编辑器。检测到其他程序修改配置或订阅清单时停止覆盖和自动恢复。
+
+**支持边界：** 仅支持普通本地配置文件和回环控制器，保存确认要求该控制器确实读取显示的本机路径；SSH 隧道、容器路径映射不在支持范围。校验复制数据目录内相对路径的 provider 缓存及标准 geodata（地域数据库）；缺少依赖、绝对/逃逸路径、外部 UI、证书/私钥文件等未支持资源会阻止保存。`rules` 的锚点、别名、自定义标签和顶层合并来源不支持写入。复杂规则的附加参数由内核校验，回读不承诺逐项验证，也不保证远程规则集已下载或实际流量一定命中。避免其他程序同时编辑同一文件；进程强杀、断电及多进程严格事务不在保证范围。后续订阅/代理组配置流程仍可能调整规则引用。规则集本身仍只查看与更新，没有新增 CLI 写命令。
+
+### [4] 日志
 
 | 键 | 作用 |
 |---|---|
@@ -173,13 +202,17 @@ proxy_tui           # 无参数进入 TUI
 
 环形缓冲上限 1000 行，长时运行内存稳定。
 
-### [4] 连接
+### [5] 连接
 
 | 键 | 作用 |
 |---|---|
 | `d` | 关闭选中连接 |
 | `D` | 关闭全部（需按 `y` 二次确认） |
 | `s` | 切换排序（流量 / 时间 / 主机） |
+
+### [6] 设置
+
+查看和编辑内核常用设置、下载源偏好与内核版本。
 
 ### 底部状态栏
 
@@ -200,6 +233,10 @@ proxy_tui proxy test 香港 -u <url> -t 5000   # 整组延迟测试，可自定�
 proxy_tui provider ls                   # 订阅列表（节点数/流量/到期/更新时间）
 proxy_tui provider update [名称]        # 更新订阅，省略名称则全部
 proxy_tui provider check <名称>         # 触发健康检查
+proxy_tui rules ls --type DOMAIN-SUFFIX --json  # 规则类型同时接受 DomainSuffix
+proxy_tui rules test example.com --json        # hit / miss / unsupported
+proxy_tui rule-provider ls --json              # 规则集列表
+proxy_tui rule-provider update <名称> --json    # 更新规则集
 proxy_tui logs -f                       # 实时日志跟随，Ctrl+C 退出
 proxy_tui logs -n 20 -g 'error'         # 抓 20 条含 error 的日志后退出
 proxy_tui conn ls -s traffic -n 50      # 连接列表，按流量排序
@@ -263,7 +300,7 @@ config.yaml（骨架，只维护一次）
 ## 迁移脚本
 
 `scripts/migrate-config.mjs` 负责把现有整份订阅配置一次性改造为上述架构。
-它是整个项目中**唯一**允许写 `config.yaml` 的入口，且安全机制齐全：
+它是一次性迁移入口；日常订阅与设置变更通过内置配置事务完成。迁移脚本的安全机制如下：
 
 ```bash
 node scripts/migrate-config.mjs --dry-run --diff   # 预览骨架与差异，不落盘
@@ -353,7 +390,8 @@ src/
 ├── commands/     # CLI 子命令
 ├── config/       # 订阅清单、骨架生成、ConfigManager（唯一写配置的模块）、
 │                 # ServiceManager、订阅事务编排（subscriptionService）
-├── views/        # TUI 四个标签页 + 订阅表单校验
+├── rules/        # 规则类型转换、保守匹配与运行时禁用确认
+├── views/        # TUI 六个标签页 + 订阅表单校验
 ├── components/   # DelayBadge / ScrollList / StatusBar / 三个对话框
 ├── hooks/        # useProxies / useProviders / useStream
 ├── App.tsx       # TUI 根组件
@@ -363,6 +401,10 @@ src/
 
 更多设计与一手实测数据：
 
+规则管理的隔离内核验收：先 `npm run build`，再运行 `node scripts/smoke-rules.mjs /absolute/path/to/mihomo`。该脚本使用临时配置和随机回环端口验证禁用/恢复及规则集更新，不读取或重载现有服务配置。
+
+规则编辑的隔离验收使用 `node scripts/smoke-rule-editing.mjs /absolute/path/to/mihomo`，要求 v1.19.24；覆盖增改移删、所有常用类型及复杂原文保留、无效配置阻断、重载响应丢失后的原字节恢复。检查过程仅操作脚本自己的临时配置目录和内核进程。
+
 | 文档 | 内容 |
 |---|---|
 | [`docs/SPEC.md`](docs/SPEC.md) | 完整设计规格：痛点分析、API 实测、架构决策、踩坑记录 |
@@ -370,14 +412,16 @@ src/
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | 路线图与技术债：待实现功能、竞品对比、非目标清单 |
 | [`docs/specs/2026-08-17-subscription-management-design.md`](docs/specs/2026-08-17-subscription-management-design.md) | 订阅生命周期管理（v0.2.0）设计稿 |
 | [`docs/specs/2026-09-22-tui-standardize-polish-spec.md`](docs/specs/2026-09-22-tui-standardize-polish-spec.md) | TUI 标准化美化（v0.2.1）设计稿 |
+| [`docs/specs/2026-09-24-config-management-spec.md`](docs/specs/2026-09-24-config-management-spec.md) | v0.4.0 规则管理规范与代理链范围修订 |
 
 ## 路线图
 
 - [x] v0.1.0 —— CLI + TUI + 配置迁移脚本
 - [x] v0.2.0 —— TUI 内订阅生命周期管理（新增 / 删除 / 编辑）+ 自动化测试体系
 - [x] v0.2.1 —— TUI 标准化美化：响应式布局、设计系统统一、内核版本管理
-- [ ] v0.3.0 —— 订阅增强：分组、重命名、远程/本地类型、更新间隔、内联 YAML 编辑（前缀按订阅名自动派生）
-- [ ] v0.4.0 —— 配置管理：规则管理、本地节点、代理链可视化
+- [x] v0.3.0 —— 订阅增强：分组、重命名、远程/本地类型、更新间隔、内联 YAML 编辑（前缀按订阅名自动派生）
+- [x] v0.4.0 —— 规则管理：规则页、规则集更新、保守规则测试、运行时禁用/降级标记
+- [ ] 后续 —— dialer-proxy 代理链设计；本机 mihomo v1.19.24 已移除 `type: relay`
 - [ ] v0.5.0 —— 单二进制打包（Bun/Deno）
 
 详细规划与技术债请参阅 [docs/ROADMAP.md](docs/ROADMAP.md)

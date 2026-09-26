@@ -5,6 +5,7 @@ import {
   KernelUnreachableError,
 } from '../api/client.js'
 import { CONFIG_PATH } from '../config.js'
+import { InvalidTargetError } from '../rules/matcher.js'
 
 /** 退出码约定：0 成功，1 通用错误，2 参数错误，3 内核不可达 */
 export const EXIT = { ok: 0, error: 1, usage: 2, unreachable: 3 } as const
@@ -147,6 +148,10 @@ export async function exitAfterFlush(code: number): Promise<never> {
  * 业务错误（如延迟测试失败）由调用方自行处理，不该走到这里。
  */
 export function reportError(err: unknown): never {
+  if (err instanceof InvalidTargetError) {
+    process.stderr.write(`错误：${err.message}\n`)
+    process.exit(EXIT.usage)
+  }
   if (err instanceof KernelUnreachableError) {
     process.stderr.write(`错误：${err.message}\n`)
     process.stderr.write('内核可能未运行，请排查：systemctl --user status mihomo\n')

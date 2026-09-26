@@ -6,6 +6,7 @@
  *  - 生成是幂等的：相同输入产出逐字节一致的结果。
  */
 import type { ParsedYaml, RegionDef, SkeletonOptions, Subscription } from './types.js'
+import { preserveLegacyRelayGroups } from './preserveGroups.js'
 
 /** 机场塞进节点列表里的伪装条目（实测三家订阅都有），统一过滤 */
 export const EXCLUDE_FILTER =
@@ -304,7 +305,10 @@ export function buildSkeleton(
   const regions = options.regions ?? REGIONS
 
   const groups = buildGroups(subscriptions, regions, testUrl)
-  const groupNames = groups.map((group) => String(group.name))
+  // 用户手写的 relay 组不属于骨架生成物：订阅事务重新生成配置时按名保留，
+  // 同名以用户原配置为准；未知字段一起保留，不依赖未启用的编辑器。
+  const withRelays = preserveLegacyRelayGroups(groups, oldConfig['proxy-groups'])
+  const groupNames = withRelays.map((group) => String(group.name))
   const oldRules = isStringArray(oldConfig.rules) ? oldConfig.rules : []
   const { rules: rewritten, missing } = rewriteRules(oldRules, groupNames)
 
@@ -356,7 +360,7 @@ export function buildSkeleton(
     ...(pickRecord(oldConfig, 'sniffer') ? { sniffer: pickRecord(oldConfig, 'sniffer') } : {}),
     dns,
     'proxy-providers': buildProviders(subscriptions, testUrl),
-    'proxy-groups': groups,
+    'proxy-groups': withRelays,
     ...(pickRecord(oldConfig, 'rule-providers')
       ? { 'rule-providers': pickRecord(oldConfig, 'rule-providers') }
       : {}),

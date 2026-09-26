@@ -1,6 +1,6 @@
 {
   "name": "mihomo-tui",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "CLI + TUI manager for the mihomo proxy kernel (API-driven, with a guarded transactional config layer)",
   "type": "module",
   "private": true,

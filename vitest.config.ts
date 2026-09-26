@@ -14,6 +14,9 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**'],
       exclude: ['src/**/__tests__/**'],
+      thresholds: {
+        'src/rules/matcher.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
+      },
     },
   },
 })

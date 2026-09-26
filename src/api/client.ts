@@ -15,6 +15,10 @@ import type {
   ProvidersResponse,
   ProxiesResponse,
   ProxyItem,
+  RuleItem,
+  RuleProviderItem,
+  RuleProvidersResponse,
+  RulesResponse,
   VersionInfo,
 } from './types.js'
 
@@ -115,7 +119,7 @@ export class MihomoClient {
       // 其余带 message 的状态码是内核对本次操作的明确表态，属业务错误：
       //   503 {"message":"An error occurred in the delay test"} —— 节点不可用（实测）
       //   400 {"message":"Selector update error: proxy not exist"} —— 节点名不在组内（实测）
-      if (message && response.status !== 401 && response.status !== 404) {
+      if (message && ![401, 403, 404, 405].includes(response.status)) {
         throw new ApiBusinessError(path, message)
       }
       throw new HttpStatusError(response.status, path, message || text.slice(0, 200))
@@ -152,7 +156,36 @@ export class MihomoClient {
     return this.request<ConnectionsResponse>('/connections')
   }
 
+  /** 当前生效的规则列表（按匹配优先级排序） */
+  async rules(): Promise<RuleItem[]> {
+    const data = await this.request<RulesResponse>('/rules')
+    return data.rules ?? []
+  }
+
+  /** 规则集 provider 列表 */
+  async ruleProviders(): Promise<Record<string, RuleProviderItem>> {
+    const data = await this.request<RuleProvidersResponse>('/providers/rules')
+    return data.providers ?? {}
+  }
+
+  /** 触发规则集 provider 重新拉取 */
+  updateRuleProvider(name: string): Promise<void> {
+    return this.request<void>(`/providers/rules/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      timeout: 60_000,
+    })
+  }
+
   // ---- 运行时写操作（均不触碰配置文件）----
+
+  /** index 必须来自最新 GET /rules。 */
+  setRuleDisabled(index: number, disabled: boolean): Promise<void> {
+    if (!Number.isInteger(index) || index < 0) throw new Error('规则索引必须为非负整数')
+    return this.request<void>('/rules/disable', {
+      method: 'PATCH',
+      body: { [index]: disabled },
+    })
+  }
 
   /**
    * 切换代理组当前选中节点。

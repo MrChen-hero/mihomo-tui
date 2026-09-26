@@ -86,6 +86,46 @@ export interface ProvidersResponse {
   providers: Record<string, ProviderItem>
 }
 
+/**
+ * GET /rules 中的单条规则。字段以 mihari 对 mihomo 的实测响应为准
+ * （type / payload / proxy），其余字段未在本机确认，标为可选。
+ */
+export interface RuleItem {
+  /** 内核零基索引；旧内核可能省略，不能用筛选后的行号代替 */
+  index?: number
+  extra?: { disabled?: boolean }
+  type: string
+  payload: string
+  /** 命中后的出口：代理组名 / DIRECT / REJECT */
+  proxy: string
+  /** 规则体量（rule-set 类规则才有） */
+  size?: number
+}
+
+/** GET /rules */
+export interface RulesResponse {
+  rules: RuleItem[]
+}
+
+/** GET /providers/rules 中的单项（字段对齐 mihari 实测响应） */
+export interface RuleProviderItem {
+  name: string
+  /** 实测取值：Rule */
+  type?: string
+  vehicleType: 'HTTP' | 'File' | (string & {})
+  /** 实测取值：Classical / Domain / IPCIDR */
+  behavior?: string
+  /** 实测取值：YamlRule / Text */
+  format?: string
+  ruleCount?: number
+  updatedAt?: string
+}
+
+/** GET /providers/rules */
+export interface RuleProvidersResponse {
+  providers: Record<string, RuleProviderItem>
+}
+
 /** GET /configs 中本项目实际用到的字段 */
 export interface ConfigsResponse {
   'mixed-port': number
