@@ -1,4 +1,4 @@
-/** 标签页 3：实时日志 */
+/** 标签页 4：实时日志 */
 import { useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { FooterLine, type FooterHint } from '../ui/FooterLine.js'

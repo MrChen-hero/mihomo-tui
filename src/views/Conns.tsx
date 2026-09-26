@@ -1,4 +1,4 @@
-/** 标签页 4：连接管理 */
+/** 标签页 5：连接管理 */
 import { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { MihomoClient } from '../api/client.js'

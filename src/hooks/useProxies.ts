@@ -64,13 +64,14 @@ export interface UseProxiesResult {
 const BUILTIN_OUTBOUNDS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE'])
 
 /**
- * [1] 节点页可见的组：AUTO 与全部机场组。
+ * [1] 节点页可见的组：AUTO、全部机场组，以及用户建的代理链（relay）。
  * 机场组由 skeleton 按「机场-<订阅名>」生成，按前缀动态识别 ——
  * 新增/删除订阅后内核里的组列表变化，这里无需改动即自动同步
  * （不能回到写死订阅名的白名单，那样新订阅的组永远进不了 [1]）。
+ * relay 组按类型识别：它的成员是跳而非节点，但仍需要在节点页里编辑。
  */
-export function isPrimaryGroupName(name: string): boolean {
-  return name === 'AUTO' || name.startsWith(AIRPORT_GROUP_PREFIX)
+export function isPrimaryGroupName(name: string, type?: string): boolean {
+  return name === 'AUTO' || name.startsWith(AIRPORT_GROUP_PREFIX) || type === 'Relay'
 }
 
 export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResult {
@@ -133,7 +134,7 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
     const rows: GroupRow[] = []
     for (const item of Object.values(proxies)) {
       if (!Array.isArray(item.all)) continue
-      if (!isPrimaryGroupName(item.name)) continue
+      if (!isPrimaryGroupName(item.name, item.type)) continue
       const members = item.all
       // 真实节点 = 既不是组、也不是 DIRECT/REJECT 这类内置出口
       const realNodes = members.filter(

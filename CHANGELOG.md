@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+- 新增规则页 `e` 配置编辑弹窗，支持常用表单、单条原文、连续增改删和 `J/K` 调序，`Ctrl+S` 统一保存；保护订阅直连前缀并检查末尾 `MATCH`。
+- 新增保留 YAML 节点和注释的规则保存事务：可取消的隔离异步校验、唯一备份、原权限原子写入、写后复验、明确路径重载与最多三次回读。
+- 保存结果区分已确认、已保存待确认、未应用、已恢复和需要人工恢复；检测外部修改后停止自动覆盖，恢复使用原始字节，待确认仅重新读取。
+- 增加规则编辑会话退出保护：写前校验取消并回收子进程，正式写入与恢复期间阻止退出；成功后刷新规则与规则集并清理旧标记和测试结果。
+- 增加草稿、故障恢复、终端按键回归及 mihomo v1.19.24 隔离验收脚本；现有 CLI 和配置管理调用契约保持兼容。
+
+## [0.4.0] - 2026-09-25
+
+- 新增规则页、规则集更新、保守域名/IP 测试和运行时规则禁用/启用。
+- 新增 `rules ls`、`rules test`、`rule-provider ls/update` CLI 命令及 JSON 输出。
+- 对齐 mihomo v1.19.24 的 `DomainSuffix`、`RuleSet`、`extra.disabled` 和 `/rules/disable` 接口。
+- 代理链暂缓：v1.19.24 已移除 `type: relay`，后续按 `dialer-proxy` 另行设计。
+
 ## [0.2.0] - 2026-09-13
 
 ### 新增
@@ -66,5 +79,6 @@
 - 日志 / 连接流仅在对应标签页可见时渲染
 - Spinner 心跳仅在有活动任务时启动
 
-[Unreleased]: https://github.com/MrChen-hero/mihomo-tui/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/MrChen-hero/mihomo-tui/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/MrChen-hero/mihomo-tui/compare/v0.2.0...v0.4.0
 [0.1.0]: https://github.com/MrChen-hero/mihomo-tui/releases/tag/v0.1.0

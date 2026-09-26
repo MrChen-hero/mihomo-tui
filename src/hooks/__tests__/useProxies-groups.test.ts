@@ -36,4 +36,9 @@ describe('isPrimaryGroupName', () => {
     expect(isPrimaryGroupName('REJECT')).toBe(false)
     expect(isPrimaryGroupName('🇭🇰 香港 IEPL-01')).toBe(false)
   })
+
+  it('relay 组按类型可见，与名字无关', () => {
+    expect(isPrimaryGroupName('落地中转', 'Relay')).toBe(true)
+    expect(isPrimaryGroupName('落地中转', 'Selector')).toBe(false)
+  })
 })

@@ -12,6 +12,7 @@ import { runProxyLs, runProxyTest, runProxyUnfix, runProxyUse } from './commands
 import { runProviderCheck, runProviderLs, runProviderUpdate } from './commands/provider.js'
 import { runConnClose, runConnLs, runReload } from './commands/conn.js'
 import { runLogs } from './commands/logs.js'
+import { runRuleProviderLs, runRuleProviderUpdate, runRulesLs, runRulesTest } from './commands/rules.js'
 import { EXIT, exitAfterFlush, reportError } from './commands/output.js'
 
 /** 版本号以 package.json 为唯一来源（编译后与源码模式都指向项目根） */
@@ -132,6 +133,43 @@ provider
     runProviderCheck(resolveConfig(), name, options),
   ))
 
+const rules = program.command('rules').description('查看当前生效规则并测试命中')
+
+rules
+  .command('ls')
+  .description('列出当前生效规则（按匹配优先级）')
+  .option('--type <type>', '只看指定类型，如 DOMAIN-SUFFIX')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean; type?: string }) =>
+    runRulesLs(resolveConfig(), options),
+  ))
+
+rules
+  .command('test')
+  .argument('<host>', '要测试的域名或 IP')
+  .description('保守本地匹配域名/IP；依赖内核数据时返回无法判定')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (host: string, options: { json?: boolean }) =>
+    runRulesTest(resolveConfig(), host, options),
+  ))
+
+const ruleProvider = program
+  .command('rule-provider')
+  .description('规则集（rule-providers）管理')
+
+ruleProvider
+  .command('ls')
+  .description('列出所有规则集')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) => runRuleProviderLs(resolveConfig(), options)))
+
+ruleProvider
+  .command('update')
+  .argument('<name>', '规则集名称')
+  .description('更新指定规则集（内核重新拉取）')
+  .option('--json', '输出 JSON')
+  .action(wrap(async (name: string, options: { json?: boolean }) => runRuleProviderUpdate(resolveConfig(), name, options)))
+
 const conn = program.command('conn').description('连接管理')
 
 conn
@@ -206,6 +244,7 @@ program.action(async () => {
   const instance = render(<App config={config} version={version} mode={mode} />, {
     // 使用备用屏幕：TUI 运行在独立屏幕，退出后恢复到进入前的终端状态（类似 vim/htop）
     alternateScreen: true,
+    exitOnCtrlC: false,
   })
   await instance.waitUntilExit()
   // mihomo 不回 WebSocket close 帧，句柄不释放 → 必须显式退出（SPEC 3.6）

@@ -268,4 +268,28 @@ describe('buildSkeleton 骨架组装', () => {
     const second = buildSkeleton(oldConfig(), [ALPHA, BETA])
     expect(first).toEqual(second)
   })
+
+  it('保留旧配置里的 relay 组，订阅事务重新生成后不丢', () => {
+    const old = oldConfig({
+      'proxy-groups': [
+        { name: 'PROXY', type: 'select', proxies: ['AUTO'] },
+        { name: '落地中转', type: 'relay', proxies: ['节点A', '节点B'], hidden: true, 'disable-udp': true },
+        { name: '坏链', type: 'relay', proxies: [1, 2] },
+      ],
+    })
+    const { skeleton } = buildSkeleton(old, [ALPHA])
+    const groups = skeleton['proxy-groups'] as { name: string; type: string; proxies: string[] }[]
+    const relay = groups.find((group) => group.name === '落地中转')
+    expect(relay).toEqual({ name: '落地中转', type: 'relay', proxies: ['节点A', '节点B'], hidden: true, 'disable-udp': true })
+    // 保留原字段，交给现有事务中的 mihomo -t 拒绝，不能通过静默删组使校验通过。
+    expect(groups.find((group) => group.name === '坏链')).toEqual({ name: '坏链', type: 'relay', proxies: [1, 2] })
+    // 骨架自己的组仍在
+    expect(groups.some((group) => group.name === 'PROXY')).toBe(true)
+  })
+
+  it('没有 relay 组时行为不变', () => {
+    const { skeleton } = buildSkeleton(oldConfig(), [ALPHA])
+    const groups = skeleton['proxy-groups'] as { type: string }[]
+    expect(groups.some((group) => group.type === 'relay')).toBe(false)
+  })
 })

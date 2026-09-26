@@ -1,5 +1,5 @@
 /**
- * 标签页 5：设置（spec 2026-09-13 settings-kernel §3.1）。
+ * 标签页 6：设置（spec 2026-09-13 settings-kernel §3.1）。
  *
  * 基础设置：显示值一律读 config.yaml（「下次重启将生效」语义）；每次修改独立
  * 走「写配置 → 重启服务」事务（settingsService）：编辑对话框 → ConfirmDialog

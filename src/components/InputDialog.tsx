@@ -138,11 +138,14 @@ export interface InputDialogProps {
   title: string
   fields: InputField[]
   width?: number
+  /** Rule raw input must reject multiline paste instead of silently joining lines. */
+  singleLinePaste?: boolean
   onSubmit: (values: Record<string, string>) => void
   onCancel: () => void
 }
 
-export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: InputDialogProps) {
+export function InputDialog({ title, fields, width = 64, singleLinePaste = false, onSubmit, onCancel }: InputDialogProps) {
+  const [pasteError, setPasteError] = useState('')
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
     for (const field of fields) initial[field.key] = field.value ?? ''
@@ -187,6 +190,8 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
   }
 
   const insertText = (raw: string): void => {
+    if (singleLinePaste && /[\r\n\0]/.test(raw)) { setPasteError('只能输入单条规则，不允许换行或 NUL'); return }
+    setPasteError('')
     const cleaned = sanitizeInput(raw)
     if (!cleaned) return
     editCurrent((chars, cursor) => ({
@@ -402,7 +407,7 @@ export function InputDialog({ title, fields, width = 64, onSubmit, onCancel }: I
     <Panel title={`◆ ${title}`} width={cardWidth}>
       {fields.map((field, index) => renderSlot(field, values[field.key] ?? '', index))}
       <Box marginTop={1} flexDirection="column">
-        {shownError ? <Text color={colors.danger}>{`⚠ ${shownError}`}</Text> : null}
+        {shownError || pasteError ? <Text color={colors.danger}>{`⚠ ${shownError || pasteError}`}</Text> : null}
         <FooterLine
           hints={[
             { key: 'Enter', label: '确认' },

@@ -5,9 +5,15 @@
  * → 写后复验 → 失败从备份回滚。校验永远在 mkdtemp 的临时目录里进行，
  * 校验过程不会往真实配置目录写任何东西。
  */
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import {
   copyFileSync,
+  closeSync,
+  fchmodSync,
+  fchownSync,
+  fsyncSync,
+  openSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +27,8 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import YAML from 'yaml'
+import type { FileAttributes } from './ruleDocument.js'
+import { prepareRuleValidation, safeDiagnostic, validationSecrets } from './ruleValidation.js'
 import { buildSkeleton } from './skeleton.js'
 import type { ApplyResult, ErrorPhase, ParsedYaml, SkeletonOptions, Subscription, ValidateResult } from './types.js'
 
@@ -48,6 +56,60 @@ export class ConfigManager {
 
   readConfigText(): string {
     return readFileSync(this.configPath, 'utf8')
+  }
+
+  /** Async rule-only validator; abort resolves only after the child is reaped. */
+  async validateRuleCandidate(yamlText: string, signal?: AbortSignal, timeoutMs = 120_000): Promise<ValidateResult> {
+    let dir: string | undefined
+    const secrets = validationSecrets(yamlText)
+    try {
+      if (signal?.aborted) return { ok: false, output: '校验已取消' }
+      dir = mkdtempSync(join(tmpdir(), 'mihomo-rule-validate-'))
+      prepareRuleValidation(yamlText, this.mihomoDir, dir)
+      const file = join(dir, 'config.yaml')
+      writeFileSync(file, yamlText, { mode: 0o600 })
+      return await new Promise<ValidateResult>((resolve) => {
+        let stopped = ''
+        // SIGKILL makes cancellation/timeout bounded, including a child ignoring SIGTERM.
+        const child = execFile(this.mihomoBin, ['-t', '-d', dir!, '-f', file], {
+          encoding: 'utf8', maxBuffer: 256 * 1024, timeout: timeoutMs, killSignal: 'SIGKILL',
+        }, (err, stdout, stderr) => {
+          signal?.removeEventListener('abort', abort)
+          const output = stopped || (err?.killed ? '校验超时或输出超过限制；子进程已终止\n' : '') + `${stdout}${stderr}` + (err ? '\n' + err.message : '')
+          resolve({ ok: !err && !stopped, output: safeDiagnostic(output, secrets) })
+        })
+        const abort = (): void => { stopped = '校验已取消'; child.kill('SIGKILL') }
+        signal?.addEventListener('abort', abort, { once: true })
+        if (signal?.aborted) abort()
+      })
+    } catch (err) { return { ok: false, output: safeDiagnostic(err, secrets) } }
+    finally { if (dir) rmSync(dir, { recursive: true, force: true }) }
+  }
+
+  /** A backup is immutable and exclusive, including multiple saves in the same millisecond. */
+  backupRuleBytes(bytes: Buffer, attributes: FileAttributes): string {
+    const path = `${this.configPath}.bak.${Date.now()}.${randomUUID()}`
+    this.createRuleFile(path, bytes, attributes)
+    return path
+  }
+
+  private createRuleFile(path: string, bytes: Buffer, attributes: FileAttributes): void {
+    const fd = openSync(path, 'wx', 0o600)
+    try {
+      const current = statSync(path)
+      if (current.uid !== attributes.uid || current.gid !== attributes.gid) fchownSync(fd, attributes.uid, attributes.gid)
+      writeFileSync(fd, bytes)
+      fchmodSync(fd, attributes.mode)
+      fsyncSync(fd)
+    } catch (err) { rmSync(path, { force: true }); throw err }
+    finally { closeSync(fd) }
+  }
+
+  /** Both candidate writes and recovery use original attributes and exact bytes. */
+  writeRuleBytes(bytes: Buffer, attributes: FileAttributes): void {
+    const path = `${this.configPath}.tmp.${randomUUID()}`
+    try { this.createRuleFile(path, bytes, attributes); renameSync(path, this.configPath) }
+    finally { rmSync(path, { force: true }) }
   }
 
   /** 读取并解析 config.yaml，缺失或不可解析直接抛错 */

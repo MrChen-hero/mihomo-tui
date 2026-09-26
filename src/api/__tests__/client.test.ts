@@ -54,6 +54,27 @@ const defaultRoutes = (): Map<string, [number, string]> =>
     ['GET /proxies/bad/delay', [503, JSON.stringify({ message: 'An error occurred in the delay test' })]],
     ['GET /proxies/boom', [500, 'boom']],
     ['PUT /providers/proxies/alpha', [204, '']],
+    [
+      'GET /rules',
+      [
+        200,
+        JSON.stringify({
+          rules: [{ type: 'DOMAIN', payload: 'example.com', proxy: 'DIRECT' }],
+        }),
+      ],
+    ],
+    [
+      'GET /providers/rules',
+      [
+        200,
+        JSON.stringify({
+          providers: {
+            OpenAI: { name: 'OpenAI', vehicleType: 'HTTP', behavior: 'Classical', ruleCount: 12 },
+          },
+        }),
+      ],
+    ],
+    ['PUT /providers/rules/AI%2FSearch', [204, '']],
   ])
 
 beforeAll(async () => {
@@ -139,6 +160,20 @@ describe('只读方法', () => {
 })
 
 describe('运行时写操作（不触碰配置文件）', () => {
+  it('禁用接口使用内核零基索引，读取保留原始类型和扩展字段', async () => {
+    const rule = { index: 12, type: 'DomainSuffix', payload: 'example.com', proxy: 'DIRECT', size: -1, extra: { disabled: false, hitCount: 4 } }
+    routes.set('GET /rules', [200, JSON.stringify({ rules: [rule] })])
+    routes.set('PATCH /rules/disable', [204, ''])
+    expect(await makeClient().rules()).toEqual([rule])
+    await makeClient().setRuleDisabled(12, true)
+    expect(last).toMatchObject({ method: 'PATCH', url: '/rules/disable', body: '{"12":true}' })
+    expect(() => makeClient().setRuleDisabled(-1, true)).toThrow('非负整数')
+  })
+
+  it('405 即使有 JSON message 仍保留 HTTP 状态用于能力降级', async () => {
+    routes.set('PATCH /rules/disable', [405, '{"message":"unsupported"}'])
+    await expect(makeClient().setRuleDisabled(0, true)).rejects.toMatchObject({ status: 405 })
+  })
   it('selectProxy 用 PUT + JSON body，路径段做 URI 编码', async () => {
     await makeClient().selectProxy('香港', 'HK-1')
     expect(last?.method).toBe('PUT')
@@ -169,6 +204,24 @@ describe('运行时写操作（不触碰配置文件）', () => {
     await makeClient().updateProvider('alpha')
     expect(last?.method).toBe('PUT')
     expect(last?.url).toBe('/providers/proxies/alpha')
+  })
+
+  it('rules() 返回规则数组', async () => {
+    const rules = await makeClient().rules()
+    expect(rules).toEqual([{ type: 'DOMAIN', payload: 'example.com', proxy: 'DIRECT' }])
+    expect(last?.url).toBe('/rules')
+  })
+
+  it('ruleProviders() 返回规则集映射', async () => {
+    const providers = await makeClient().ruleProviders()
+    expect(providers['OpenAI']?.ruleCount).toBe(12)
+    expect(last?.url).toBe('/providers/rules')
+  })
+
+  it('updateRuleProvider 用 PUT 且对名称做 URI 编码', async () => {
+    await makeClient().updateRuleProvider('AI/Search')
+    expect(last?.method).toBe('PUT')
+    expect(last?.url).toBe('/providers/rules/AI%2FSearch')
   })
 })
 
