@@ -97,7 +97,9 @@ export function RulesView({ config, height, width, active, onMessage, client }: 
     if (active) reload()
   }, [active, reload])
 
-  useKeyCapture(active && dialog === 'detail')
+  // 忙碌期间同样捕获：否则 ESC 会越过本页直达全局退出确认，随后 Enter 直接退掉 TUI
+  // （对齐订阅页「忙碌不弹退出」语义：更新/禁用进行中按键一律吞掉）
+  useKeyCapture(active && (dialog === 'detail' || busy))
 
   const rows = useMemo(() => buildRuleRows(rules, providers, { type: typeFilter, keyword }),
     [rules, providers, typeFilter, keyword])

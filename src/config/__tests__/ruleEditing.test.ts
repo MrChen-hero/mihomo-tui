@@ -280,6 +280,14 @@ describe('isolated asynchronous validation and exclusive files', () => {
       expect((await f.manager.validateRuleCandidate(text)).ok).toBe(false)
     }
   })
+  it('accepts geoip.metadb as the kernel-default geoip database and http providers without explicit paths', async () => {
+    const f = fixture()
+    writeFileSync(join(f.dir, 'geoip.metadb'), 'metadb')
+    expect((await f.manager.validateRuleCandidate('rules: ["GEOIP,CN,DIRECT"]')).ok).toBe(true)
+    const httpProvider = YAML.stringify({ 'rule-providers': { r: { type: 'http', url: 'https://rules.example/set.yaml', interval: 86400 } }, rules: ['RULE-SET,r,DIRECT'] })
+    expect((await f.manager.validateRuleCandidate(httpProvider)).ok).toBe(true)
+    expect((await f.manager.validateRuleCandidate(YAML.stringify({ 'rule-providers': { r: { type: 'file' } }, rules: [] }))).ok).toBe(false)
+  })
   it('cancels and times out, reaps child and removes temporary directories without production writes', async () => {
     const f = fixture(), record = join(f.dir, 'child.json')
     writeFileSync(f.bin, '#!/usr/bin/env node\nconst fs=require("fs"); fs.writeFileSync(' + JSON.stringify(record) + ', JSON.stringify({pid:process.pid,dir:process.argv[4]})); setInterval(()=>{},1000);\n')

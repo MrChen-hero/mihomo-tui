@@ -133,6 +133,17 @@ describe('规则页', () => {
     reject(new Error('update failed')); await delay(100)
     expect(onMessage).toHaveBeenLastCalledWith('更新失败：update failed')
   })
+  it('更新/禁用忙碌期间捕获按键，ESC 不逃逸到全局退出确认', async () => {
+    const { term, api } = setup({ items: [] }); await delay(100)
+    let release!: () => void
+    api.updateRuleProvider.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+    await press(term, 'u')
+    expect(api.updateRuleProvider).toHaveBeenCalledTimes(1)
+    expect(keysCaptured()).toBe(true)
+    await press(term, '\x1b')
+    release(); await delay(100)
+    expect(keysCaptured()).toBe(false)
+  })
   it('40 列窄屏列表按显示宽度裁剪，空列表安全响应导航', async () => {
     const { term } = setup({ width: 40 }); await delay(100)
     const lines = textOf(term.frames()).split('\n').filter((line) => line.includes('example.com') || line.includes('remote-set'))

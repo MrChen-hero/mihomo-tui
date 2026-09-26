@@ -49,20 +49,26 @@ export function prepareRuleValidation(text: string, sourceDir: string, targetDir
     }
   }
   walk(config)
-  // Cached geodata is copied at the standard paths recognized by mihomo.
-  const geodata = ['geoip.dat', 'geosite.dat', 'country.mmdb', 'GeoLite2-ASN.mmdb']
+  // Cached geodata is copied at the standard paths recognized by mihomo
+  // (dat/mmdb plus the metadb default for geoip).
+  const geodata = ['geoip.dat', 'geoip.metadb', 'geosite.dat', 'country.mmdb', 'GeoLite2-ASN.mmdb']
   for (const name of geodata) if (existsSync(resolve(root, name))) copy(name)
   const serialized = JSON.stringify(config)
   if (/GEOSITE|geosite:/i.test(serialized) && !existsSync(resolve(targetDir, 'geosite.dat'))) throw new Error('缺少 geosite.dat')
   if (/GEOIP|geoip:/i.test(serialized)) {
-    const name = config['geodata-mode'] === true ? 'geoip.dat' : 'country.mmdb'
-    if (!existsSync(resolve(targetDir, name))) throw new Error('缺少 ' + name)
+    if (config['geodata-mode'] === true) {
+      if (!existsSync(resolve(targetDir, 'geoip.dat'))) throw new Error('缺少 geoip.dat（geodata-mode 已开启）')
+    } else if (!existsSync(resolve(targetDir, 'country.mmdb')) && !existsSync(resolve(targetDir, 'geoip.metadb'))) {
+      throw new Error('缺少 country.mmdb 或 geoip.metadb（内核默认 geoip 数据库）')
+    }
   }
   if (/IP-ASN/i.test(serialized) && !existsSync(resolve(targetDir, 'GeoLite2-ASN.mmdb'))) throw new Error('缺少 GeoLite2-ASN.mmdb')
   for (const key of ['proxy-providers', 'rule-providers']) {
     const providers = config[key]
     if (providers && typeof providers === 'object') for (const provider of Object.values(providers)) {
-      if (provider && typeof provider === 'object' && provider.type !== 'inline' && typeof provider.path !== 'string') {
+      // http 型 provider 的缓存路径由内核自行派生，无法预先隔离复制，交给 -t 给出真实结论
+      if (provider && typeof provider === 'object' && provider.type !== 'inline' && provider.type !== 'http' &&
+        typeof provider.path !== 'string') {
         throw new Error('provider 缺少可隔离的相对缓存路径')
       }
     }

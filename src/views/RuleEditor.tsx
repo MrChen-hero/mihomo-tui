@@ -136,7 +136,9 @@ export function RuleEditor({ config, width, height, onClose, onSaved, createServ
       if (dialog === 'discard') {
         if (input === 'y' || input === 'Y') (exitIntent.current ?? onClose)()
         else if (key.escape || input === 'n' || input === 'N') { exitIntent.current = undefined; setDialog(locked ? 'result' : 'list') }
-      } else if (key.escape) close()
+      } else if (input === 'r' && result?.status === 'pending') void save(true)
+      // 窄屏下 pending 不经 close()（它会弹回不可见的 result 页），直接进确认退出
+      else if (key.escape) { if (result?.status === 'pending') setDialog('discard'); else close() }
       return
     }
     if (dialog === 'detail') {
@@ -189,7 +191,9 @@ export function RuleEditor({ config, width, height, onClose, onSaved, createServ
   if ((width < 40 || height < 16) && dialog !== 'progress') {
     content = dialog === 'discard'
       ? <Text>{result?.status === 'pending' ? '运行待确认，退出？y/n' : '放弃草稿？y 确认 / n 取消'}</Text>
-      : <Text>请扩大终端（至少 40×22）；ESC 返回</Text>
+      : result?.status === 'pending'
+        ? <Text>请扩大终端（至少 40×22）；运行待确认：r 重新读取 / ESC 退出编辑</Text>
+        : <Text>请扩大终端（至少 40×22）；ESC 返回</Text>
   } else if (dialog === 'progress') {
     content = <ProgressDialog title="保存配置规则" current={LABELS[phase]} step={PHASES.indexOf(phase)} total={PHASES.length}
       detail={notice ? clip(notice) : undefined} width={cardWidth} cancelable={['prepare', 'conflict', 'validate'].includes(phase)} onCancel={() => abort.current?.abort()} />
