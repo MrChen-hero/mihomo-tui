@@ -2,7 +2,7 @@
  * 订阅事务编排的集成测试：全 mock（stub mihomo + stub systemctl + tmpdir），
  * 覆盖设计稿 8.2 的正常流、逐阶段失败回滚与并发保护。零生产触碰。
  */
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -21,6 +21,7 @@ import {
 } from '../subscriptionService.js'
 import type { ServiceDeps, Step } from '../subscriptionService.js'
 import type { Subscription } from '../types.js'
+import { loadSubscriptions } from '../subscriptions.js'
 
 const ALPHA: Subscription = { name: 'alpha', type: 'remote', url: 'https://alpha.example/sub?token=aaaa' }
 const BETA: Subscription = { name: 'beta', type: 'remote', url: 'https://beta.example/sub?token=bbbb', prefix: '[B] ' }
@@ -364,5 +365,27 @@ describe('进度上报', () => {
       'write',
     ])
     expect(restartCount()).toBe(0)
+  })
+})
+
+describe('首装闭环：无清单文件与空清单场景', () => {
+  it('无清单文件时 addSubscription 成功并原子建档', async () => {
+    const { deps } = harness()
+    rmSync(subsPath)
+    expect(loadSubscriptions(subsPath)).toEqual([])
+
+    await addSubscription(GAMMA, deps)
+
+    expect(existsSync(subsPath)).toBe(true)
+    expect(subNames()).toEqual(['gamma'])
+  })
+
+  it('空清单文件（外部手工恢复产物）不阻塞新增', async () => {
+    const { deps } = harness()
+    writeFileSync(subsPath, JSON.stringify({ subscriptions: [] }), 'utf8')
+
+    await addSubscription(GAMMA, deps)
+
+    expect(subNames()).toEqual(['gamma'])
   })
 })

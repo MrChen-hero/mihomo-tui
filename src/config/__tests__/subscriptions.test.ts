@@ -129,9 +129,9 @@ describe('isDuplicateName 重名判断', () => {
 })
 
 describe('loadSubscriptions 读取与容错', () => {
-  it('文件缺失时抛错并提示格式', () => {
+  it('文件缺失宽容返回空数组（首装闭环：由事务原子建档）', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'mihomo-tui-subs-')), 'nope.json')
-    expect(() => loadSubscriptions(path)).toThrow(/找不到订阅清单/)
+    expect(loadSubscriptions(path)).toEqual([])
   })
 
   it('坏 JSON 抛错', () => {
@@ -140,9 +140,9 @@ describe('loadSubscriptions 读取与容错', () => {
     expect(() => loadSubscriptions(path)).toThrow(/不是合法 JSON/)
   })
 
-  it('空清单与非对象清单抛错', () => {
-    expect(() => loadSubscriptions(tempSubsFile({ subscriptions: [] }))).toThrow(/订阅清单为空/)
-    expect(() => loadSubscriptions(tempSubsFile({}))).toThrow(/订阅清单为空/)
+  it('空清单与非对象清单宽容返回空数组', () => {
+    expect(loadSubscriptions(tempSubsFile({ subscriptions: [] }))).toEqual([])
+    expect(loadSubscriptions(tempSubsFile({}))).toEqual([])
   })
 
   it('条目缺 url 或名称非法时抛错，且错误信息不含 URL（防 token 泄漏）', () => {

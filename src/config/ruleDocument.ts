@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { accessSync, constants, lstatSync, readFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, lstatSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import YAML, { isMap, isScalar, isSeq, Scalar, YAMLSeq } from 'yaml'
 import { subscriptionDirectRules } from './skeleton.js'
@@ -40,12 +40,13 @@ export function readRuleSnapshot(path: string, subscriptionsPath = SUBS_PATH): R
   let protectedRules: string[] = []
   let subscriptionsHash = ''
   try {
-    const before = readFileSync(subscriptionsPath)
+    // 宽容语义：清单缺失/为空 = 零保护规则（首装真态）；只有损坏才阻塞写入
+    const before = existsSync(subscriptionsPath) ? readFileSync(subscriptionsPath) : null
     protectedRules = subscriptionDirectRules(loadSubscriptions(subscriptionsPath))
-    const after = readFileSync(subscriptionsPath)
-    if (!before.equals(after)) throw new Error('读取时订阅清单发生变化，请重新打开')
-    subscriptionsHash = digest(after)
-  } catch { blocked = '订阅清单缺失、为空、损坏或读取期间变化，禁止写入：' + subscriptionsPath }
+    const after = existsSync(subscriptionsPath) ? readFileSync(subscriptionsPath) : null
+    if (before?.toString() !== after?.toString()) throw new Error('读取时订阅清单发生变化，请重新打开')
+    subscriptionsHash = after ? digest(after) : ''
+  } catch { blocked = '订阅清单损坏或读取期间变化，禁止写入：' + subscriptionsPath }
   try { accessSync(path, constants.R_OK | constants.W_OK) } catch { blocked = '配置文件不可读写：' + path }
   const names = (value: unknown): string[] => Array.isArray(value)
     ? value.flatMap(v => v && typeof v.name === 'string' ? [v.name] : []) : []

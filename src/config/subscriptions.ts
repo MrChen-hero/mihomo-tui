@@ -122,15 +122,13 @@ export function isDuplicateName(name: string, existing: Subscription[]): boolean
   return existing.some((sub) => sub.name.toLowerCase() === lower)
 }
 
-/** 读取订阅清单。文件缺失 / JSON 坏 / 条目不合法 / 空清单都直接抛错。 */
+/**
+ * 读取订阅清单（宽容语义）：文件缺失与空清单返回 [] —— 首装与删光场景由
+ * 事务原子建档（saveSubscriptions 本就承担建档）；JSON 损坏与条目不合法仍抛错，
+ * 那是损坏信号，静默容忍会掩盖问题。迁移脚本保留自己的严格读取，不走本函数。
+ */
 export function loadSubscriptions(path: string = SUBS_PATH): Subscription[] {
-  if (!existsSync(path)) {
-    throw new Error(
-      `找不到订阅清单：${path}\n` +
-        '请创建该文件，格式：\n' +
-        '{ "subscriptions": [ { "name": "xxx", "prefix": "[X] ", "url": "https://..." } ] }',
-    )
-  }
+  if (!existsSync(path)) return []
   let data: unknown
   try {
     data = JSON.parse(readFileSync(path, 'utf8'))
@@ -138,9 +136,7 @@ export function loadSubscriptions(path: string = SUBS_PATH): Subscription[] {
     throw new Error(`订阅清单不是合法 JSON：${err instanceof Error ? err.message : String(err)}`)
   }
   const subs = (data as Partial<SubscriptionsFile> | null)?.subscriptions
-  if (!Array.isArray(subs) || subs.length === 0) {
-    throw new Error('订阅清单为空')
-  }
+  if (!Array.isArray(subs) || subs.length === 0) return []
   const validated: Subscription[] = []
   for (const raw of subs) {
     // 报错只带 name，防止 token 随 URL 泄进日志

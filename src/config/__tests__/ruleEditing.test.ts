@@ -74,11 +74,14 @@ describe('rule drafts and YAML preservation', () => {
       () => moveRule(draft, draft.rows[1]!.id, -1)]) expect(fn).toThrow()
     writeFileSync(f.path, base.replace('DOMAIN,sub.example,DIRECT', 'DOMAIN,other.example,DIRECT'))
     expect(readRuleSnapshot(f.path, f.subs).draft.blocked).toContain('订阅直连')
-    for (const content of ['{}', '{bad', '{"subscriptions":[]}']) {
+    // 宽容语义：清单缺失/空 = 零保护规则（首装真态），不阻塞；只有损坏才阻塞
+    for (const content of ['{}', '{"subscriptions":[]}']) {
       writeFileSync(f.subs, content)
-      expect(readRuleSnapshot(f.path, f.subs).draft.blocked).toContain('订阅清单')
+      expect(readRuleSnapshot(f.path, f.subs).draft.blocked).toBeUndefined()
     }
     rmSync(f.subs)
+    expect(readRuleSnapshot(f.path, f.subs).draft.blocked).toBeUndefined()
+    writeFileSync(f.subs, '{bad', 'utf8')
     expect(readRuleSnapshot(f.path, f.subs).draft.blocked).toContain('订阅清单')
   })
   it('keeps complex raw syntax and validates MATCH and filtering boundaries', () => {
