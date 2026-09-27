@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EXIT,
   displayWidth,
+  exitAfterFlush,
   fitDisplay,
   formatBytes,
   formatRelativeTime,
@@ -196,5 +197,69 @@ describe('formatRelativeTime 相对时间', () => {
     expect(formatRelativeTime(new Date(Date.now() - 90_000).toISOString())).toBe('1m 前')
     expect(formatRelativeTime(new Date(Date.now() - 2 * 3600_000).toISOString())).toBe('2h 前')
     expect(formatRelativeTime(new Date(Date.now() - 3 * 86400_000).toISOString())).toBe('3d 前')
+  })
+})
+
+/** process.exit 被 stub 为抛出哨兵错误，使 async 函数以 rejection 形式携带退出码 */
+class ExitSignal extends Error {
+  constructor(readonly code: number) {
+    super(`exit:${code}`)
+  }
+}
+
+function stubExit(): void {
+  vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null) => {
+    throw new ExitSignal(typeof code === 'number' ? code : -1)
+  })
+}
+
+/** 把 stdout 的积压字节数与 write 行为整体接管，隔离真实管道的不确定性 */
+function stubStdout(backlog: number, invokeCallback: boolean): { writeSpy: ReturnType<typeof vi.fn> } {
+  vi.spyOn(process.stdout, 'writableLength', 'get').mockReturnValue(backlog)
+  vi.spyOn(process.stderr, 'writableLength', 'get').mockReturnValue(0)
+  const writeSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation(((...args: unknown[]) => {
+      const cb = args.find((arg) => typeof arg === 'function') as (() => void) | undefined
+      if (invokeCallback) cb?.()
+      return true
+    }) as never)
+  return { writeSpy }
+}
+
+describe('exitAfterFlush 冲净后退出', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('无积压时不写空串直接退出', async () => {
+    stubExit()
+    const { writeSpy } = stubStdout(0, false)
+
+    await expect(exitAfterFlush(EXIT.ok)).rejects.toMatchObject({ code: EXIT.ok })
+    expect(writeSpy).not.toHaveBeenCalled()
+  })
+
+  it('有积压时写空串等回调，回调触发后退出', async () => {
+    stubExit()
+    const { writeSpy } = stubStdout(1024, true)
+
+    await expect(exitAfterFlush(EXIT.usage)).rejects.toMatchObject({ code: EXIT.usage })
+    expect(writeSpy).toHaveBeenCalledWith('', expect.any(Function))
+  })
+
+  it('回调永不触发时超时护栏保底退出', async () => {
+    stubExit()
+    stubStdout(1024, false)
+    // 与 output.ts 的 FLUSH_TIMEOUT_MS 对应（常量未导出）
+    vi.useFakeTimers()
+    try {
+      const pending = exitAfterFlush(7).catch((err: unknown) => err)
+      await vi.advanceTimersByTimeAsync(1000)
+      const settled = await pending
+      expect(settled).toMatchObject({ code: 7 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

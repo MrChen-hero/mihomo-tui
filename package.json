@@ -46,7 +46,7 @@
     "bundle:darwin": "node scripts/build-binary.mjs --target darwin-arm64",
     "bundle:windows": "node scripts/build-binary.mjs --target windows-x64",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",

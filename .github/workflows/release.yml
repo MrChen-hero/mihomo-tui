@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -44,7 +44,7 @@ jobs:
           set +e
           ./dist-bin/mihomo-tui-*-linux-x64 status --json
           test $? -eq 3
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-bin
           path: dist-bin/
@@ -61,7 +61,7 @@ jobs:
           - { os: windows-latest, bin: windows-x64.exe }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: dist-bin
       - name: Verify checksums
@@ -80,7 +80,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: dist-bin
           path: dist-bin
@@ -96,10 +96,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # granular token（仅 @morndream/mihomo-tui 的 publish 权限）；未配置时
-      # 本 job 照常通过、publish 步骤跳过——token 就绪前发布链路保持绿
+      # 本 job 照常通过、publish 步骤跳过——token 就绪前发布链路保持绿。
+      # 前瞻：npm 官方预告 2027-01 起 granular token 直发将移除（改 stage-only
+      # 流程），现有 token 2026-12-26 到期，重建时按届时官方文档操作
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -113,7 +115,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          # 完整门禁由 prepublishOnly 承担（typecheck + test + build）；
+          # 门禁由 prepublishOnly（typecheck + test）与 prepare（build）承担；
           # 预发布版本走 dist-tag next，避免 rc 抢占 latest
           VERSION=$(node -p "require('./package.json').version")
           case "$VERSION" in *-*) npm publish --access public --tag next ;; *) npm publish --access public ;; esac

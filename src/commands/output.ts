@@ -133,11 +133,23 @@ export function formatRelativeTime(iso: string | undefined): string {
  * 为什么需要：mihomo 不回应 WebSocket 的 close 帧（实测 v1.19.24），
  * undici 的关闭握手永不完成，TCP 句柄一直挂在事件循环上，进程不会自然退出。
  * 凡是用过 Stream 的命令都必须走这里显式退出。
+ *
+ * 手段说明：Node 官方没有 flush API，「写空串等回调」依赖流按 FIFO
+ * 处理写队列的实现行为（回调触发即代表其前的数据已处理完）；该行为
+ * 无文档背书，故回调若因流异常永不触发，超时护栏保证进程仍能退出。
  */
+const FLUSH_TIMEOUT_MS = 1000
+
 export async function exitAfterFlush(code: number): Promise<never> {
   for (const stream of [process.stdout, process.stderr]) {
     if (stream.writableLength > 0) {
-      await new Promise<void>((resolve) => stream.write('', () => resolve()))
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, FLUSH_TIMEOUT_MS)
+        stream.write('', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
     }
   }
   process.exit(code)
