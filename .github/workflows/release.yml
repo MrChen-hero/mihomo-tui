@@ -84,10 +84,28 @@ jobs:
         with:
           name: dist-bin
           path: dist-bin
+      - name: Build mirror download links for release notes
+        working-directory: dist-bin
+        run: |
+          # 国内网络直连 GitHub 实测过慢（<100KB/s），gh-proxy 镜像实测可达 MB/s 级；
+          # Release notes 附上每个产物的镜像链接，用户复制即可用
+          {
+            echo ''
+            echo '### 国内镜像下载'
+            echo ''
+            echo '直连 GitHub 缓慢时，用以下镜像链接（URL 前缀 gh-proxy.com）：'
+            echo ''
+            for f in *; do
+              echo "- [${f}](https://gh-proxy.com/${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/${f})"
+            done
+          } >> "$GITHUB_WORKSPACE/mirror-notes.md"
+          cat "$GITHUB_WORKSPACE/mirror-notes.md"
       - uses: softprops/action-gh-release@v3
         with:
           files: dist-bin/*
           generate_release_notes: true
+          body_path: mirror-notes.md
+          append_body: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}
 
   publish:

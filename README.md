@@ -81,7 +81,8 @@ npm install -g @morndream/mihomo-tui@latest
 
 ### 单二进制（免 Node.js）
 
-从 [Releases](https://github.com/MrChen-hero/mihomo-tui/releases) 下载对应平台产物：
+从 [Releases](https://github.com/MrChen-hero/mihomo-tui/releases) 下载对应平台产物。国内网络直连
+GitHub 缓慢时，在下载 URL 前加镜像前缀 `https://gh-proxy.com/`（Release 页已附各文件的镜像链接）：
 
 | 平台 | 产物 |
 | --- | --- |
@@ -90,7 +91,7 @@ npm install -g @morndream/mihomo-tui@latest
 | Windows x64 | `mihomo-tui-*-windows-x64.exe` |
 
 ```bash
-sha256sum -c checksums.txt
+grep linux-x64 checksums.txt | sha256sum -c -   # checksums.txt 含全部五个平台，按平台过滤后校验
 chmod +x mihomo-tui-*-linux-x64
 ```
 
