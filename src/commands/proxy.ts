@@ -26,7 +26,8 @@ export async function runProxyLs(
   options: ProxyLsOptions,
 ): Promise<void> {
   const client = new MihomoClient(config)
-  const proxies = await client.proxies()
+  // 合并视图：v1.19.28+ 的 /proxies 不含 provider 节点，组内成员会整片缺席
+  const proxies = await client.proxiesWithProviderNodes()
 
   // 不带组名：列出所有代理组及当前选中
   if (!group) {

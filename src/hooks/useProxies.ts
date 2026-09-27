@@ -80,8 +80,8 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
   const [testing, setTesting] = useState<Set<string>>(new Set())
-  // 组测速结果的本地回填：mihomo v1.19.25+ 的回归会让 provider 节点缺席
-  // /proxies 表（历史无从读取），组端点的结果在这里兜底显示
+  // 组测速结果的本地回填：节点在订阅更新后改名等场景下 /proxies 合并视图
+  // 里已无此名（历史无从读取），组端点的结果在这里兜底显示
   const [delayOverlay, setDelayOverlay] = useState<Record<string, number>>({})
   const [testingGroup, setTestingGroup] = useState<string | undefined>()
   const [progress, setProgress] = useState<{ done: number; total: number } | undefined>()
@@ -89,7 +89,9 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
 
   const load = useCallback(async () => {
     try {
-      const data = await client.proxies()
+      // 合并视图：mihomo v1.19.28 起上游有意不再把 provider 节点放进 /proxies
+      // （85c1798f），合并后节点的 type / 延迟历史 / provider-name 才是完整的
+      const data = await client.proxiesWithProviderNodes()
       if (!mounted.current) return
       setProxies(data)
       setError(undefined)
@@ -183,7 +185,7 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
       return target.all.map((name) => {
         const node = proxies[name]
         if (!node) {
-          // 节点缺席 /proxies 表（mihomo v1.19.25+ 回归）：组端点测速的
+          // 节点缺席合并视图（订阅更新后改名等）：组端点测速的
           // 结果经 overlay 兜底，避免永远显示 ---
           const overlayDelay = delayOverlay[name]
           const result = classifyDelayValue(overlayDelay, config.delayThresholds)
@@ -258,8 +260,8 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
 
       try {
         // 单次调用组端点：内核并发测全组并返回 {节点名: 延迟}。
-        // 相比逐节点并发：请求数从 N 降到 1，且不依赖 /proxies 表里有
-        // 节点实体（mihomo v1.19.25+ 回归会让 provider 节点缺席该表）
+        // 相比逐节点并发：请求数从 N 降到 1，且不依赖节点名可被单独寻址
+        // （v1.19.28+ 主表 404 时这条路径仍通）
         const results = await client.testGroupDelay(group)
         if (!mounted.current) return
         setDelayOverlay((prev) => ({ ...prev, ...results }))
@@ -280,12 +282,18 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
     async (name: string): Promise<string | undefined> => {
       setTesting((prev) => new Set(prev).add(name))
       try {
+        // provider 节点统一走 provider 维度端点：v1.19.28+ 主表对 provider
+        // 节点一律 404；旧内核两端点等价，因此无需按内核版本分支
+        const provider = proxies[name]?.['provider-name']
+        if (provider) {
+          await client.testProviderNodeDelay(provider, name)
+          return undefined
+        }
         await client.testProxyDelay(name)
         return undefined
       } catch (err) {
-        // 404 = 节点名未注册进内核查询表：可能是订阅更新后节点名变化，
-        // 也可能是 mihomo v1.19.25+ 的 provider 节点注册回归——回退到
-        // 组端点测速（其结果经 overlay 兜底显示），并给用户明确提示
+        // 404 = 节点名未注册进内核查询表：可能是订阅更新后节点名变化——
+        // 回退到组端点测速（其结果经 overlay 兜底显示），并给用户明确提示
         if (err instanceof HttpStatusError && err.status === 404) {
           const containingGroup = Object.entries(proxies).find(
             ([, p]) => Array.isArray(p.all) && (p.all as string[]).includes(name),

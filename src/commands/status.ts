@@ -2,7 +2,7 @@
  * proxy_tui status —— 内核版本、模式、端口、provider 概览。
  * 检查点 1 的验证目标：能连上 19090 并打印 v1.19.24。
  */
-import { MihomoClient } from '../api/client.js'
+import { MihomoClient, mergeProviderNodes } from '../api/client.js'
 import type { ProviderItem, ProxyItem } from '../api/types.js'
 import type { AppConfig } from '../config.js'
 import { formatRelativeTime, printJson, renderTable } from './output.js'
@@ -37,8 +37,10 @@ export async function runStatus(config: AppConfig, options: StatusOptions): Prom
     client.providers(),
   ])
 
-  const groups = Object.values(proxies).filter(isGroup)
-  const nodes = Object.values(proxies).filter((proxy) => !isGroup(proxy))
+  // v1.19.28+ 的 /proxies 不含 provider 节点，节点计数以合并视图为准
+  const allProxies = mergeProviderNodes(proxies, providers)
+  const groups = Object.values(allProxies).filter(isGroup)
+  const nodes = Object.values(allProxies).filter((proxy) => !isGroup(proxy))
   const subs = realProviders(providers)
 
   if (options.json) {

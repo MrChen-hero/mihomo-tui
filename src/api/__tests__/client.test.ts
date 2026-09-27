@@ -9,10 +9,26 @@ import {
   HttpStatusError,
   KernelUnreachableError,
   MihomoClient,
+  mergeProviderNodes,
 } from '../client.js'
 import type { AppConfig } from '../../config.js'
 
 const SECRET = 'test-secret'
+
+/** GET /proxies 的假响应：v1.19.28+ 真实行为——只有内建出口与组，无 provider 节点 */
+const MAIN_TABLE = {
+  proxies: {
+    DIRECT: { name: 'DIRECT', type: 'Direct', alive: true, history: [] },
+    AUTO: {
+      name: 'AUTO',
+      type: 'Selector',
+      alive: true,
+      history: [],
+      all: ['HK-1'],
+      now: 'HK-1',
+    },
+  },
+}
 
 interface CapturedRequest {
   method: string
@@ -31,6 +47,7 @@ let routes: Map<string, [number, string]>
 const defaultRoutes = (): Map<string, [number, string]> =>
   new Map([
     ['GET /version', [200, JSON.stringify({ meta: 'mihomo', version: 'v1.19.24' })]],
+    ['GET /proxies', [200, JSON.stringify(MAIN_TABLE)]],
     [
       'GET /providers/proxies',
       [
@@ -222,6 +239,61 @@ describe('运行时写操作（不触碰配置文件）', () => {
     await makeClient().updateRuleProvider('AI/Search')
     expect(last?.method).toBe('PUT')
     expect(last?.url).toBe('/providers/rules/AI%2FSearch')
+  })
+})
+
+describe('v1.19.28+ provider 节点适配', () => {
+  it('proxiesWithProviderNodes 合并 provider 节点并补 provider-name', async () => {
+    const proxies = await makeClient().proxiesWithProviderNodes()
+    expect(Object.keys(proxies)).toEqual(['DIRECT', 'AUTO', 'HK-1'])
+    expect(proxies['HK-1']?.['provider-name']).toBe('alpha')
+    expect(proxies['HK-1']?.type).toBe('Shadowsocks')
+  })
+
+  it('mergeProviderNodes 不覆盖主表已有键，跳过 Compatible 伪 provider', () => {
+    const proxies = { 'HK-1': { name: 'HK-1', type: 'Shadowsocks', alive: true, history: [] } }
+    const providers = {
+      alpha: {
+        name: 'alpha',
+        vehicleType: 'HTTP',
+        proxies: [
+          { name: 'HK-1', type: 'Shadowsocks', alive: false, history: [] },
+          { name: 'US-1', type: 'Shadowsocks', alive: true, history: [] },
+        ],
+      },
+      default: {
+        name: 'default',
+        vehicleType: 'Compatible',
+        proxies: [{ name: 'GHOST', type: 'Selector', alive: true, history: [] }],
+      },
+    }
+    const merged = mergeProviderNodes(proxies, providers)
+    expect(merged['HK-1']?.alive).toBe(true) // 主表键不被 provider 数据覆盖
+    expect(merged['US-1']?.['provider-name']).toBe('alpha')
+    expect(merged['GHOST']).toBeUndefined() // 组的影子不进节点视图
+  })
+
+  it('testProviderNodeDelay 走 provider 维度 healthcheck 端点并带 url/timeout', async () => {
+    routes.set(
+      'GET /providers/proxies/alpha/HK-1/healthcheck',
+      [200, JSON.stringify({ delay: 233 })],
+    )
+    const result = await makeClient({ testTimeout: 1234 }).testProviderNodeDelay('alpha', 'HK-1')
+    expect(result).toEqual({ delay: 233 })
+    expect(last?.url).toBe(
+      '/providers/proxies/alpha/HK-1/healthcheck?url=https%3A%2F%2Ftest%2Fgenerate_204&timeout=1234',
+    )
+  })
+
+  it('testProviderNodeDelay 的 404 归入 HttpStatusError 供调用方回退', async () => {
+    const err = await makeClient()
+      .testProviderNodeDelay('alpha', 'missing')
+      .then(
+        () => null,
+        (e: unknown) => e,
+      )
+    expect(err).toBeInstanceOf(HttpStatusError)
+    expect((err as HttpStatusError).status).toBe(404)
   })
 })
 

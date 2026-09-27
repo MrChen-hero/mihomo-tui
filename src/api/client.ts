@@ -59,6 +59,30 @@ export class ApiBusinessError extends Error {
   }
 }
 
+/**
+ * 把 /providers/proxies 的真实 provider 节点合并进 /proxies 视图。
+ *
+ * mihomo v1.19.28 起上游有意恢复原版 Clash 行为（85c1798f「break: restore
+ * original Clash /proxies behavior」）：/proxies 不再合并 provider 节点，
+ * 按节点名的查询/测速也不再到 provider 里找。本函数补齐展示侧的缺口；
+ * 合并幂等——旧内核（≤v1.19.27）两表本来就重叠，已存在的键不覆盖；
+ * Compatible 伪 provider 是代理组的影子，跳过。
+ */
+export function mergeProviderNodes(
+  proxies: Record<string, ProxyItem>,
+  providers: Record<string, ProviderItem>,
+): Record<string, ProxyItem> {
+  const merged = { ...proxies }
+  for (const provider of Object.values(providers)) {
+    if (provider.vehicleType !== 'HTTP' && provider.vehicleType !== 'File') continue
+    for (const proxy of provider.proxies ?? []) {
+      if (merged[proxy.name]) continue
+      merged[proxy.name] = { ...proxy, 'provider-name': proxy['provider-name'] || provider.name }
+    }
+  }
+  return merged
+}
+
 const DEFAULT_TIMEOUT = 8000
 
 export interface RequestOptions {
@@ -143,6 +167,16 @@ export class MihomoClient {
     return data.proxies ?? {}
   }
 
+  /**
+   * 全量节点视图：/proxies 与 provider 节点合并。
+   * 旧内核（≤v1.19.27）单次 /proxies 已是全量，合并只是去重；
+   * v1.19.28+ 必须经此才能看到 provider 节点（含 type / 延迟历史 / provider-name）。
+   */
+  async proxiesWithProviderNodes(): Promise<Record<string, ProxyItem>> {
+    const [proxies, providers] = await Promise.all([this.proxies(), this.providers()])
+    return mergeProviderNodes(proxies, providers)
+  }
+
   proxy(name: string): Promise<ProxyItem> {
     return this.request<ProxyItem>(`/proxies/${encodeURIComponent(name)}`)
   }
@@ -210,6 +244,24 @@ export class MihomoClient {
       query: { url, timeout },
       timeout: timeout + 2000,
     })
+  }
+
+  /**
+   * provider 节点的延迟测试。v1.19.28+ 上 /proxies/{name}/delay 对 provider
+   * 节点一律 404；此端点新旧内核同形（同一 getProxyDelay 处理器、同样的
+   * url/timeout 查询参数与 {"delay": n} 返回），因此 provider 节点统一走这里，
+   * 无需按内核版本分支。
+   */
+  testProviderNodeDelay(
+    provider: string,
+    name: string,
+    url = this.testUrl,
+    timeout = this.testTimeout,
+  ): Promise<DelayResult> {
+    return this.request<DelayResult>(
+      `/providers/proxies/${encodeURIComponent(provider)}/${encodeURIComponent(name)}/healthcheck`,
+      { query: { url, timeout }, timeout: timeout + 2000 },
+    )
   }
 
   /** 整组延迟测试，返回 {节点名: 延迟}，失效节点不出现在结果里 */
