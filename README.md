@@ -101,6 +101,29 @@ chmod +x mihomo-tui-*-linux-x64
 交叉编译、三平台冒烟、Release 附加产物与 npm 同步发布；`-rc` 后缀的 tag 自动标记预发布并
 发布到 npm 的 `next` dist-tag。项目未提供 Docker 或云平台部署配置。
 
+### 卸载内核
+
+`kernel install` 装的二进制、归档与引导配置，手工清理：
+
+```bash
+# 1. 先停内核（按你的启动方式二选一）
+pkill mihomo                                   # 前台/后台进程
+systemctl --user disable --now mihomo          # 若配置过 systemd --user 服务
+
+# 2. 删二进制、备份与归档
+rm -f ~/bin/mihomo ~/bin/mihomo.bak.*
+rm -rf ~/.local/share/mihomo-tui/kernels
+
+# 3. 删引导配置（确认里面没有你要保留的订阅配置后再删）
+rm -rf ~/.config/mihomo
+
+# 4. 验证：mihomo-tui 回到「未检测到内核」的引导提示
+mihomo-tui status
+```
+
+注意：`npm uninstall -g @morndream/mihomo-tui` 只卸载管理工具本身，以上内核路径均不受影响；
+连工具配置与订阅清单一起清掉是 `rm -rf ~/.config/mihomo-tui`。
+
 ## 第一次使用
 
 1. **还没有 mihomo 内核？** 一条命令自助闭环：
