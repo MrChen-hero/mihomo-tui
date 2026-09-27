@@ -6,6 +6,8 @@
 ## [Unreleased]
 
 - 修复分发渠道在国内网络的可用性：Release notes 自动附加各产物的 gh-proxy 镜像下载链接，README 安装节补充镜像前缀用法并将校验命令改为按平台 `grep | sha256sum -c` 写法。
+- 首次生成配置时向交互终端输出一行引导（proxy init 集成用法）：新版 npm 安装期不再执行被安装包的 postinstall，提示改在首次运行的确定性时机给出；stdout 纯净契约不受影响。
+- README「第一次使用」恢复可直接复制的 proxy init 一行式安装命令。
 
 ## [0.5.0-rc.0] - 2026-09-27
 

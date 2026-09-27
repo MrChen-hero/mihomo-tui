@@ -107,6 +107,20 @@ function merge(raw: unknown): AppConfig {
   }
 }
 
+/**
+ * 首次生成配置后给一句 stderr 引导。
+ * npm install -g 在新版 npm（11+ 实测）不再执行被安装包的 postinstall，
+ * 安装期提示不可靠，改在首次运行的确定性时机给出；仅交互终端输出，
+ * 管道与 --json 消费者看到的是干净的 stderr。
+ */
+function printFirstRunHint(): void {
+  if (!process.stderr.isTTY) return
+  process.stderr.write(
+    '提示：已生成初始配置 ~/.config/mihomo-tui/config.json\n' +
+      '要用 proxy on / off 管理本 shell 的系统代理？先执行：eval "$(mihomo-tui proxy init)"\n',
+  )
+}
+
 /** 读取配置；文件不存在则生成一份默认配置后返回 */
 export function loadConfig(path: string = CONFIG_PATH): AppConfig {
   let text: string
@@ -118,6 +132,7 @@ export function loadConfig(path: string = CONFIG_PATH): AppConfig {
       try {
         mkdirSync(dirname(path), { recursive: true })
         writeFileSync(path, `${JSON.stringify(created, null, 2)}\n`, 'utf8')
+        if (path === CONFIG_PATH) printFirstRunHint()
       } catch {
         // 写不进去也不该阻断运行，用内存里的默认值继续
       }

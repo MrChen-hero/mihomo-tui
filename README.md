@@ -110,8 +110,13 @@ chmod +x mihomo-tui-*-linux-x64
 3. 进入 TUI（直接运行 `mihomo-tui`），在订阅页按 `a` 新增订阅；已有「整份订阅」旧配置的
    用户可用 `node scripts/migrate-config.mjs --dry-run --diff` 预览改造方案，确认后 `--apply`。
 4. 节点页 `Enter` 选用节点、`t` 测速；订阅页 `u` 更新当前订阅、`U` 全部更新。
-5. 把 `eval "$(mihomo-tui proxy init)"` 加进 `~/.bashrc`，获得 `proxy on` / `proxy off` /
-   `proxy status` / `proxy` 快捷命令，管理本 shell 的系统代理环境变量。
+5. 要用 `proxy on` / `proxy off` / `proxy status` 快捷命令管理本 shell 的系统代理环境变量，
+   把集成装进 bashrc（首次运行 `mihomo-tui` 时命令行也会输出同样提示）：
+
+   ```bash
+   echo 'eval "$(mihomo-tui proxy init)"' >> ~/.bashrc && source ~/.bashrc
+   proxy on        # 开启本 shell 的系统代理，端口自动发现
+   ```
 6. 备份与迁移：配置变更自动留 `config.yaml.bak.*`（保留 7 天）；换设备时拷贝
    `~/.config/mihomo-tui/` 与 mihomo 目录即可完整复原。
 7. 注意：新增 / 删除订阅会重启一次 mihomo 服务（秒级断流，更新不断流）；切节点、切模式等
