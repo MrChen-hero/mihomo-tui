@@ -556,11 +556,12 @@ jobs:
 
 实施过程中确认无法在本阶段闭环的事项记录于此，按阶段追加；闭环后勾选。
 
-- [ ] **npm 发布前置（用户操作）**：注册 npm 账号并配置 GitHub Secrets `NPM_TOKEN`（granular token，仅 `@morndream/mihomo-tui` 的 publish 权限）；publish job 在 token 就绪前以跳过状态存在
-- [ ] **端到端 release 验证（用户操作）**：push `v0.5.0-rc.0` tag 触发 release.yml 全链路（5 产物 attach、3 平台 smoke-matrix、npm 同步发布）
+- [x] **npm 发布前置（用户操作）**：注册 npm 账号并配置 GitHub Secrets `NPM_TOKEN`（granular token，仅 `@morndream/mihomo-tui` 的 publish 权限）；publish job 在 token 就绪前以跳过状态存在（2026-09-27 registry 实证发布成功）
+- [x] **端到端 release 验证（用户操作）**：push `v0.5.0-rc.0` tag 触发 release.yml 全链路（5 产物 attach、3 平台 smoke-matrix、npm 同步发布）——2026-09-27 六 job 全绿：GitHub Release 6 资产（5 平台二进制 + checksums.txt，prerelease 自动标记），npm 0.5.0-rc.0 发布、dist-tag `next` 生效
 - [ ] **真机手测（R6/R7）**：macOS Apple Silicon 与 Windows 各跑一次 TUI 进出与 `--version` / `status --json`
-- [ ] **版本发布节奏**：rc tag 前把 `package.json` version bump 为与 tag 一致（如 `v0.5.0-rc.0` ↔ `0.5.0-rc.0`，build job 守卫强制），CHANGELOG 建立对应版本节；正式 `v0.5.0` 时去掉 prerelease 标记
+- [x] **版本发布节奏**：rc tag 前把 `package.json` version bump 为与 tag 一致（如 `v0.5.0-rc.0` ↔ `0.5.0-rc.0`，build job 守卫强制），CHANGELOG 建立对应版本节；正式 `v0.5.0` 时去掉 prerelease 标记（rc 已按此执行）
 - [ ] **npm granular token 政策迁移（2027-01 前评估）**：npm 官方预告 2027-01 起 granular token 直接 publish 将移除（改为 stage-only 流程）；现有 token 2026-12-26 到期，重建时需按届时官方文档操作，release.yml publish job 已留前瞻注释
+- [ ] **npm 首发的 `latest` 占位（自愈项）**：实测 npm 首次发布无论 `--tag next` 与否都会把 `latest` 指向首个版本——当前 `latest` 暂指 `0.5.0-rc.0`；不要手工 `dist-tag rm latest`（裸装通道会在稳定版发布前无版本可装），正式 `v0.5.0` 发布时 `latest` 自动翻正、该项闭环
 - [x] **vitest `poolOptions` 弃用清理（2026-09-27 闭环）**：`poolOptions.forks.singleFork` 在 vitest 5 是静默 no-op（官方 v4 迁移指南：移除 poolOptions，等价写法 `maxWorkers: 1 + isolate: false`）；实测默认并行 fork 更快（43 文件约 13s vs 单进程约 54s），故直接移除死配置走默认并行，未迁移
 
 ---
