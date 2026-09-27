@@ -10,6 +10,7 @@ import { runStatus } from './commands/status.js'
 import { runProxyLs, runProxyTest, runProxyUnfix, runProxyUse } from './commands/proxy.js'
 import { runProxyInit, runProxyOff, runProxyOn, runProxyStatus } from './commands/proxyEnv.js'
 import { runProviderCheck, runProviderLs, runProviderUpdate } from './commands/provider.js'
+import { runKernelInstall, runKernelLs, type KernelInstallOptions } from './commands/kernel.js'
 import { runConnClose, runConnLs, runReload } from './commands/conn.js'
 import { runLogs } from './commands/logs.js'
 import { runRuleProviderLs, runRuleProviderUpdate, runRulesLs, runRulesTest } from './commands/rules.js'
@@ -156,6 +157,27 @@ provider
   .action(wrap(async (name: string, options: { json?: boolean }) =>
     runProviderCheck(resolveConfig(), name, options),
   ))
+
+const kernel = program.command('kernel').description('mihomo 内核版本管理（下载 / 安装 / 查看）')
+
+kernel
+  .command('ls')
+  .description('查看生效与本地归档的内核版本，及远端最新稳定版')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) => runKernelLs(resolveConfig(), options)))
+
+kernel
+  .command('install')
+  .argument('[version]', '内核版本（如 1.19.30 或 v1.19.30），缺省安装最新稳定版')
+  .description('下载并安装内核；官方源失败自动回退镜像，并生成引导配置')
+  .option('--alpha', '安装最新 alpha 版（按资产 sha 键控，避免装到陈旧构建）')
+  .option('--port <n>', '引导配置的 external-controller 端口，默认 19090')
+  .option('--mirror <prefix>', '自定义下载镜像前缀（形如 https://gh-proxy.com/），指定后不再回退其他源')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (version: string | undefined, options: KernelInstallOptions) =>
+    runKernelInstall(resolveConfig(), version, options),
+  ))
+
 
 const rules = program.command('rules').description('查看当前生效规则并测试命中')
 
