@@ -107,6 +107,7 @@ chmod +x mihomo-tui-*-linux-x64
 
    ```bash
    mihomo-tui kernel install     # 下载安装最新稳定版内核 + 生成最小引导配置
+   mihomo-tui kernel service install   # 可选：一键开机自启（systemd/launchd/计划任务）
    ```
 
    官方源失败自动回退镜像（可 `--mirror` 指定、`--port` 自定义控制口端口）；`config.yaml`
@@ -148,6 +149,7 @@ mihomo-tui conn ls -s traffic -n 50      # 连接列表，按流量排序
 mihomo-tui conn close <id|--all>         # 关闭连接
 mihomo-tui kernel ls                     # 本地与远端内核版本
 mihomo-tui kernel install [version]      # 下载安装内核与引导配置（--port/--mirror/--alpha）
+mihomo-tui kernel service install        # 一键开机自启并启动内核（uninstall 卸载）
 mihomo-tui reload                        # 热重载配置（内核不重启）
 ```
 

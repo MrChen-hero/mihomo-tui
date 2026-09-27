@@ -25,6 +25,12 @@ import {
 import { MihomoClient } from '../api/client.js'
 import { ServiceManager } from '../config/service.js'
 import {
+  installService,
+  uninstallService,
+  type ServiceExec,
+  type ServiceFlavor,
+} from '../kernel/serviceSetup.js'
+import {
   DEFAULT_CONFIG,
   loadConfig,
   saveConfig,
@@ -104,8 +110,75 @@ function progressLine(progress: InstallProgress, lastPct: { value: number }): st
     lastPct.value = pct
     return `${progress.message} ${pct}%`
   }
-  if (progress.phase === 'download') return progress.received ? `${progress.message} ${(progress.received / 1024 / 1024).toFixed(1)} MB` : undefined
+  if (progress.phase === 'download') return progress.received ? `${progress.message} ${(progress.received / 1048576).toFixed(1)} MB` : undefined
   return progress.message
+}
+
+export interface ProgressWriterOptions {
+  /** 缺省取 process.stderr.isTTY */
+  tty?: boolean
+  columns?: number
+  /** 缺省写 stderr */
+  write?: (text: string) => void
+  /** 缺省 Date.now（测试注入） */
+  now?: () => number
+}
+
+/**
+ * 安装进度输出：TTY 用 \r 原位刷新单行进度条（与 TUI 用量条同款 #/- 字符，
+ * 100ms 节流），非 TTY 退化为按 10% 分行（管道与 --json 消费者按行读取）。
+ * 阶段切换（校验/替换/重启）先补换行收掉进度条，保证后续 ✓ 行落在行首。
+ */
+export function makeProgressWriter(options: ProgressWriterOptions = {}): (progress: InstallProgress) => void {
+  const tty = options.tty ?? process.stderr.isTTY === true
+  const write = options.write ?? ((text: string) => process.stderr.write(text))
+  const now = options.now ?? Date.now
+  const columns = options.columns ?? process.stderr.columns ?? 80
+  let lastDrawAt = 0
+  let lastDrawn = ''
+  let lastPct = -100
+  return (progress) => {
+    if (!tty) {
+      if (progress.phase === 'download' && progress.total) {
+        const pct = Math.min(100, Math.floor((progress.received ?? 0) / progress.total * 100))
+        if (pct - lastPct < 10 && pct < 100) return
+        lastPct = pct
+        write(`${progress.message} ${pct}%\n`)
+        return
+      }
+      if (progress.phase === 'download') {
+        if (progress.received) write(`${progress.message} ${(progress.received / 1048576).toFixed(1)} MB\n`)
+        return
+      }
+      write(`${progress.message}\n`)
+      return
+    }
+    if (progress.phase !== 'download') {
+      if (lastDrawn) {
+        write('\n')
+        lastDrawn = ''
+      }
+      write(`${progress.message}\n`)
+      return
+    }
+    const pct = progress.total ? Math.min(100, Math.floor((progress.received ?? 0) / progress.total * 100)) : undefined
+    const t = now()
+    if (t - lastDrawAt < 100 && lastDrawn && pct !== 100) return
+    if (pct === undefined && !progress.received) return
+    lastDrawAt = t
+    const mb = (bytes: number | undefined): string => ((bytes ?? 0) / 1048576).toFixed(1)
+    let line: string
+    if (pct === undefined) {
+      line = `${progress.message} ${mb(progress.received)} MB`
+    } else {
+      const barWidth = Math.max(10, Math.min(24, columns - progress.message.length - 18))
+      const filled = Math.round((barWidth * pct) / 100)
+      const bar = '#'.repeat(filled) + '-'.repeat(barWidth - filled)
+      line = `${progress.message} [${bar}] ${pct}%${progress.total ? ` ${mb(progress.received)}/${mb(progress.total)} MB` : ''}`
+    }
+    write('\r' + line.padEnd(lastDrawn.length))
+    lastDrawn = line
+  }
 }
 
 export async function runKernelLs(
@@ -186,21 +259,18 @@ export async function runKernelInstall(
     asset = selectAsset(release, tag)
   }
 
-  const lastPct = { value: -100 }
   const serviceAttached = deps.hasService ?? hasSystemdUnit()
   // 全新机器上 ~/bin 往往不存在，installer 的原子替换（tmp 放目标同目录）会 ENOENT
   const binPath = config.mihomoBin ?? MIHOMO_BIN_DEFAULT
   mkdirSync(dirname(binPath), { recursive: true })
-  const result = await installKernel(    { tag, ...(asset ? { asset } : {}), ...(alpha ? { alpha: true } : {}) },
+  const result = await installKernel(
+    { tag, ...(asset ? { asset } : {}), ...(alpha ? { alpha: true } : {}) },
     {
       ...(config.mihomoBin ? { mihomoBin: config.mihomoBin } : {}),
       ...(deps.kernelsDir ? { kernelsDir: deps.kernelsDir } : {}),
       sourceConfig,
       ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-      onProgress: (progress) => {
-        const line = progressLine(progress, lastPct)
-        if (line) process.stderr.write(`${line}\n`)
-      },
+      onProgress: makeProgressWriter(),
       // systemd --user 单元存在时才接管重启与确认（与设置页同源）；新机器没有
       // 服务可重启，installer 对缺省 deps 自动跳过这两个阶段
       ...(serviceAttached
@@ -264,18 +334,85 @@ export async function runKernelInstall(
   const lines = [
     `✓ 内核 ${result.tag}${alpha ? '（alpha）' : ''} 已安装：${binPath}` +
       (result.fromArchive ? '（离线归档复用）' : ''),
-    configCreated
-      ? `✓ 已生成引导配置 ${configYaml}（mixed-port ${BOOTSTRAP_MIXED_PORT}，控制口 127.0.0.1:${port}）`
-      : `已有内核配置 ${configYaml}，未改动`,
-    apiState === 'updated'
-      ? `✓ 控制口地址已写入 ${deps.configPath ?? '~/.config/mihomo-tui/config.json'}`
-      : apiState === 'kept-custom'
-        ? `已有自定义 api（${fresh.api}），未改动；新内核控制口为 ${desiredApi}`
-        : `控制口地址 ${desiredApi} 与现有配置一致`,
-    serviceAttached
-      ? '检测到 systemd --user 服务：已自动重启内核并确认版本'
-      : `下一步：${binPath} -d ${mihomoDir}     # 启动内核（前台；长期运行建议配置 systemd --user 服务）`,
-    '然后：mihomo-tui status               # 确认连接后即可正常使用',
+    configCreated ? `✓ 已生成引导配置 ${configYaml}` : `已有内核配置 ${configYaml}，未改动`,
   ]
+  if (apiState === 'updated') lines.push(`✓ 控制口地址已写入工具配置（${desiredApi}）`)
+  if (apiState === 'kept-custom') {
+    lines.push(`已有自定义 api（${fresh.api}），未改动；新内核控制口为 ${desiredApi}`)
+  }
+  lines.push('')
+  if (serviceAttached) {
+    lines.push('检测到 systemd --user 服务：已自动重启内核并确认版本')
+  } else {
+    lines.push(`下一步：${binPath} -d ${mihomoDir}     # 启动内核`)
+    lines.push('或配置开机自启：mihomo-tui kernel service install')
+  }
+  lines.push('然后：mihomo-tui status     # 确认连接')
   process.stdout.write(lines.join('\n') + '\n')
+}
+
+export interface KernelServiceOptions {
+  json?: boolean
+}
+
+export interface KernelServiceDeps {
+  /** 注入执行器（测试用）；缺省 spawnSync */
+  exec?: ServiceExec
+  home?: string
+  flavor?: ServiceFlavor
+  user?: string
+}
+
+export async function runKernelServiceInstall(
+  config: AppConfig,
+  options: KernelServiceOptions = {},
+  deps: KernelServiceDeps = {},
+): Promise<void> {
+  const input = {
+    binPath: config.mihomoBin ?? MIHOMO_BIN_DEFAULT,
+    mihomoDir: config.mihomoDir || MIHOMO_DIR_DEFAULT,
+  }
+  const result = installService(input, deps)
+  if (options.json) {
+    printJson(result)
+    return
+  }
+  if (result.flavor === 'unsupported') {
+    process.stderr.write(`错误：${result.message}\n`)
+    process.exit(EXIT.error)
+  }
+  const lines = [
+    result.definitionCreated
+      ? `✓ 服务定义已写入 ${result.definitionPath}`
+      : `服务定义已存在（${result.definitionPath}），未改动`,
+    result.enabled ? '✓ 服务已启动并设为开机自启' : '✗ 服务启用失败（--json 可查看 errors 明细）',
+  ]
+  if (result.lingerHint) lines.push(`提示：SSH 断开后保活需要一次提权：${result.lingerHint}`)
+  lines.push(...result.errors.map((e) => `⚠ ${e}`))
+  lines.push('验证：mihomo-tui status')
+  process.stdout.write(lines.join('\n') + '\n')
+  if (!result.enabled) process.exit(EXIT.error)
+}
+
+export async function runKernelServiceUninstall(
+  _config: AppConfig,
+  options: KernelServiceOptions = {},
+  deps: KernelServiceDeps = {},
+): Promise<void> {
+  const result = uninstallService(deps)
+  if (options.json) {
+    printJson(result)
+    return
+  }
+  if (result.flavor === 'unsupported') {
+    process.stderr.write(`错误：${result.message}\n`)
+    process.exit(EXIT.error)
+  }
+  const lines: string[] = []
+  if (result.removed) lines.push('✓ 内核服务已停止并移除开机自启')
+  else lines.push('✗ 服务卸载失败（--json 可查看 errors 明细）')
+  lines.push(...result.errors.map((e) => `⚠ ${e}`))
+  lines.push('内核二进制与配置保留在原位，需要彻底清理请手动删除')
+  process.stdout.write(lines.join('\n') + '\n')
+  if (!result.removed) process.exit(EXIT.error)
 }

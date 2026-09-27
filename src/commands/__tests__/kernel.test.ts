@@ -9,9 +9,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runKernelInstall, runKernelLs, type KernelCommandDeps } from '../kernel.js'
+import { runKernelInstall, runKernelLs, makeProgressWriter, type KernelCommandDeps } from '../kernel.js'
 import { DEFAULT_CONFIG, loadConfig, type AppConfig } from '../../config.js'
 import { assetNamesFor } from '../../kernel/releases.js'
+import type { InstallProgress } from '../../kernel/installer.js'
 
 const TAG = 'v1.19.30'
 const OLD_TAG = 'v1.18.0'
@@ -246,4 +247,47 @@ describe('runKernelLs', () => {
     expect(summary.remote).toEqual([])
     expect(summary.remoteError).toBeTruthy()
   }, 15000)
+})
+
+describe('makeProgressWriter 安装进度', () => {
+  const MB = 1048576
+  const download = (received: number, total = 80 * MB): InstallProgress =>
+    ({ phase: 'download', message: '下载内核', received, total })
+  const verify: InstallProgress = { phase: 'verify', message: '校验二进制' }
+
+  it('TTY：\\r 原位刷新进度条，阶段切换补换行且过程行不带 \\n', () => {
+    const out: string[] = []
+    let t = 0
+    const write = makeProgressWriter({ tty: true, columns: 80, write: (s) => out.push(s), now: () => (t += 200) })
+    write(download(0))
+    write(download(40 * MB))
+    write(verify)
+    const all = out.join('')
+    expect(all).toContain('\r')
+    expect(all).toContain('[####')
+    expect(all).toContain('50%')
+    expect(out[out.length - 1]).toBe('校验二进制\n')
+    expect(out.filter((s) => s.startsWith('\r')).every((s) => !s.includes('\n'))).toBe(true)
+  })
+
+  it('TTY：100ms 节流——时间未推进时快速连发只画一次', () => {
+    const out: string[] = []
+    let t = 0
+    const write = makeProgressWriter({ tty: true, columns: 80, write: (s) => out.push(s), now: () => t })
+    write(download(0))
+    write(download(8 * MB))
+    write(download(16 * MB))
+    expect(out.filter((s) => s.includes('\r')).length).toBe(1)
+  })
+
+  it('非 TTY：按 10% 步进分行，每行以换行结尾', () => {
+    const out: string[] = []
+    const write = makeProgressWriter({ tty: false, write: (s) => out.push(s) })
+    for (let pct = 0; pct <= 100; pct += 5) write(download(pct * 0.8 * MB))
+    const joined = out.join('')
+    expect(joined).toContain('0%\n')
+    expect(joined).toContain('50%\n')
+    expect(joined).toContain('100%\n')
+    expect(out.every((s) => s.endsWith('\n'))).toBe(true)
+  })
 })

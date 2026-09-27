@@ -10,7 +10,7 @@ import { runStatus } from './commands/status.js'
 import { runProxyLs, runProxyTest, runProxyUnfix, runProxyUse } from './commands/proxy.js'
 import { runProxyInit, runProxyOff, runProxyOn, runProxyStatus } from './commands/proxyEnv.js'
 import { runProviderCheck, runProviderLs, runProviderUpdate } from './commands/provider.js'
-import { runKernelInstall, runKernelLs, type KernelInstallOptions } from './commands/kernel.js'
+import { runKernelInstall, runKernelLs, runKernelServiceInstall, runKernelServiceUninstall, type KernelInstallOptions } from './commands/kernel.js'
 import { runConnClose, runConnLs, runReload } from './commands/conn.js'
 import { runLogs } from './commands/logs.js'
 import { runRuleProviderLs, runRuleProviderUpdate, runRulesLs, runRulesTest } from './commands/rules.js'
@@ -176,6 +176,26 @@ kernel
   .option('--json', '输出原始 JSON')
   .action(wrap(async (version: string | undefined, options: KernelInstallOptions) =>
     runKernelInstall(resolveConfig(), version, options),
+  ))
+
+const kernelService = kernel
+  .command('service')
+  .description('内核开机自启与长期运行（按平台自动选择 systemd / launchd / 计划任务）')
+
+kernelService
+  .command('install')
+  .description('一键配置开机自启并启动内核（幂等，服务定义已存在时零覆盖）')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) =>
+    runKernelServiceInstall(resolveConfig(), options),
+  ))
+
+kernelService
+  .command('uninstall')
+  .description('停止内核服务并移除开机自启（内核二进制与配置保留）')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) =>
+    runKernelServiceUninstall(resolveConfig(), options),
   ))
 
 
