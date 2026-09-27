@@ -4,6 +4,8 @@
 - **目标版本**：v0.5.0
 - **上游依据**：`docs/ROADMAP.md` §v0.5.0、`docs/DEVELOPMENT.md`、`package.json`、`bin/mihomo-tui`、`.github/workflows/ci.yml`
 - **状态**：草稿（待评审）
+- **修订**：2026-09-27 增补 §6「Shell 代理开关集成」（`proxy on/off/status/init`），Checkpoint、测试、风险与验证方案同步扩充
+- **修订 2**：2026-09-27 将「npm registry 发布」从非目标移入范围——scoped 包 `@mrchen-hero/mihomo-tui`（裸名已被抢注）、package.json 发布化改造与 release.yml publish job（§7.3、§9）
 
 ---
 
@@ -26,6 +28,7 @@
 | artifact | CI 构建产物 | GitHub Actions 每次跑出来的下载文件 |
 | checksum | 校验和（本 spec 用 SHA256） | 用于验证下载文件没坏/没被篡改 |
 | smoke test | 冒烟测试 | 只验证程序能启动、能 `--help`，不深测业务逻辑 |
+| emit-eval 模式 | CLI 把 shell 代码打印到 stdout、由父 shell `eval` 执行 | 子进程无法修改父 shell 的环境变量，「开关」动作只能由 CLI 算好、shell 侧执行 |
 
 **本次 v0.5.0 目标**：
 
@@ -34,6 +37,8 @@
 3. 提供 `scripts/build-binary.mjs` 本地打包入口
 4. 新增 GitHub Actions `release.yml`，push `v*` tag 时自动出产物并挂到 GitHub Release
 5. 保持现有 `tsc` + `bin/mihomo-tui` Node 分发路径不变（**双轨分发**）
+6. 内置 shell 代理开关 `proxy on / off / status / init`：把作者 bashrc 私有的 `proxy-on` / `proxy-off` / `proxy-tui` 收纳为安装即用的正式能力（详见 §6）
+7. npm registry 正式发布（scoped 包 `@mrchen-hero/mihomo-tui`），与 GitHub Release 二进制构成双发布通道；`npm install -g @mrchen-hero/mihomo-tui@latest` 安装即用（详见 §7.3）
 
 ---
 
@@ -45,7 +50,11 @@
 - CI 工作流 `.github/workflows/release.yml`
 - 版本号统一从 `package.json` 读取（现有 `src/cli.tsx` 已如此）
 - 产物 SHA256 checksums (`checksums.txt`)
-- 安装说明（README 增附录，不单独写安装脚本——本版本不提供 `install.sh`）
+- **Shell 代理开关**：`proxy on|off|status` 子命令（emit-eval 模式，详见 §6）与 `proxy init` shell 集成输出（`proxy`、`proxy on/off/status` 及 `proxy-on/proxy-off/proxy-tui` 兼容别名）
+- **npm 发布化改造**：`package.json` 移除 `private`、新增 `files` 白名单与 `prepublishOnly` 门禁、定稿 scoped 包名 `@mrchen-hero/mihomo-tui`（详见 §7.3）
+- **release.yml 增加 publish job**：与二进制产物同 tag 触发，`NPM_TOKEN`（granular）+ `--access public`
+- **git 直装过渡**：`prepare` 构建脚本，使 `npm install -g github:MrChen-hero/mihomo-tui#main` 在 registry 发布前即可用
+- 安装说明（README 增附录，含 shell 集成一行安装；不单独写安装脚本——本版本不提供 `install.sh`）
 - 冒烟测试：CI 中跑 `./<binary> --help` 和 `./<binary> status --json`（无 mihomo 环境，期望友好错误退出码 3）
 
 ### 2.2 非目标（Not Goals）
@@ -53,9 +62,13 @@
 - **GUI 安装器**：不做 MSI / DMG / Debian 包 / RPM
 - **auto-update**：二进制不会自更新，升级 = 用户手动下载新版本
 - **代码签名 / notarize**：macOS Gatekeeper 提示由用户自行处理（`xattr -d com.apple.quarantine`）
-- **NPM registry 发布**：`package.json` 目前 `"private": true`，本版本不改
+- **NPM registry 发布**：原列为非目标，修订 2 已移入范围（见 §7.3）——仅 codex 式 platform-packages 仍属非目标
 - **跨架构交叉编译产物的大量调优**（如精简 Bun runtime）：允许单文件 60–100 MB
 - **替用户管理 mihomo 内核**：仍假设外部启动 mihomo
+- **改写用户 rc 文件**：安装 = 用户自行追加一行 `eval "$(mihomo-tui proxy init)"`，工具绝不静默写 `~/.bashrc`
+- **单工具专属代理**（git/npm/apt 的 config 级代理）：env-only 边界，不做
+- **npm platform-packages**（codex 式 `optionalDependencies` 平台二进制壳）：本版 npm 包为纯 JS（`dist/` 直跑），不做；待单二进制落地后按 §17 开放问题 4 评估
+- **fish / PowerShell 集成**：`init` 预留 `--shell` 参数，首版仅 POSIX sh（bash/zsh 同一输出）
 
 ---
 
@@ -101,7 +114,7 @@
 | **`process.stdout.isTTY`、`readline.emitKeypressEvents`** | ⚠️ 历史 issue 密集，**需验证** | ⚠️ | **高** |
 | **WebSocket 客户端**（`runLogs` 使用） | ✅ Bun 原生 | ✅ Deno 原生 | 低 |
 | **`fetch`（API 调用层）** | ✅ | ✅ | 低 |
-| **`import.meta.url` + `readFileSync(package.json)`** | ⚠️ `--compile` 后 `import.meta.url` 指向虚拟路径，**需改造**：版本号改为构建期编译进常量（见 §6） | 同 | **中** |
+| **`import.meta.url` + `readFileSync(package.json)`** | ⚠️ `--compile` 后 `import.meta.url` 指向虚拟路径，**需改造**：版本号改为构建期编译进常量（见 §5） | 同 | **中** |
 
 **关键需验证点列表**（写入 Execution Checkpoints 1）：
 
@@ -131,9 +144,81 @@ export const VERSION: string =
 
 ---
 
-## 6. 总体架构
+## 6. Shell 代理开关集成（proxy on / off / status / init）
 
-### 6.1 构建流水线
+### 6.1 背景与本质约束
+
+作者自用的 `proxy-tui` / `proxy-on` / `proxy-off` 定义在私有 bashrc 中，开源用户拿不到。本版将其收纳为正式能力，但有一个不可绕过的约束：
+
+> **CLI 子进程无法修改父 shell 的环境变量。** 所以 `proxy on` 不能一条命令直接生效，必须走 emit-eval 模式：CLI 完成全部判断（内核可达性、端口发现、变量集合计算），把一段 shell 代码打印到 stdout，由父 shell `eval` 执行。
+
+**stdout 纯净契约**：`on`/`off` 成功时 stdout 只能是 shell 代码，诊断与提示一律走 stderr；失败时 stdout 必须为空（`eval "$(…)"` 退化为安全空操作）并返回非零退出码。
+
+**二进制名决策**：保持 `mihomo-tui`，不缩写成 `mihomo`——与内核二进制同名必然冲突（本工具还要下载、校验并调用 `mihomo -t`）。「短」的诉求由 `proxy init` 输出的 shell 函数承担：日常只敲 `proxy on`。
+
+### 6.2 CLI 命令设计
+
+并入既有 `proxy` 命令组（`ls/use/unfix/test` 不动）；帮助文本明确区分 `on/off`（系统代理环境变量）与 `use`（内核选节点）：
+
+| 命令 | 行为 | 退出码 |
+| --- | --- | --- |
+| `mihomo-tui proxy on` | 校验内核可达 → stdout 输出 `export` 代码段；内核不可达时 stdout 为空、stderr 给指引 | 0 / 3 |
+| `mihomo-tui proxy off` | stdout 输出 `unset` 代码段；**不访问内核**，离线永远成功 | 0 |
+| `mihomo-tui proxy status [--json]` | 内核状态、混合端口及其来源、当前 shell 是否已开启（探针变量）与端口一致性 | 0 |
+| `mihomo-tui proxy init` | 输出 shell 集成函数定义（POSIX sh，bash/zsh 通吃；`--shell` 预留） | 0 |
+
+`on` 的选项：`--port <n>` 显式覆盖端口、`--lan` 在 `no_proxy` 追加私有网段、`--all` 追加 `all_proxy`、`--start` 内核离线时先经 `ServiceManager` 拉起 systemd user 服务（默认关闭）。
+
+TTY 行为：stdout 连接终端时照常输出代码，并在 stderr 提示「请 eval 执行，或先装集成：`eval "$(mihomo-tui proxy init)"`」；stdout 为管道时不打印提示（脚本场景保持纯净）。
+
+### 6.3 `proxy init` 输出与安装
+
+```sh
+# mihomo-tui shell integration（proxy init 输出）
+proxy() {
+  case "${1:-tui}" in
+    on)     shift; eval "$(command mihomo-tui proxy on)";;
+    off)    shift; eval "$(command mihomo-tui proxy off)";;
+    status) shift; command mihomo-tui proxy status "$@";;
+    tui)    shift; command mihomo-tui "$@";;
+    *)      command mihomo-tui "$@";;
+  esac
+}
+proxy-on()  { proxy on "$@"; }
+proxy-off() { proxy off "$@"; }
+proxy-tui() { proxy tui "$@"; }
+```
+
+安装即用 = README 快速开始的一行（对 npm 与二进制分发是同一条路，无需探测安装路径）：
+
+```sh
+echo 'eval "$(mihomo-tui proxy init)"' >> ~/.bashrc
+```
+
+### 6.4 `on` 的输出与端口发现
+
+```
+export http_proxy='http://127.0.0.1:<port>'
+export https_proxy='http://127.0.0.1:<port>'
+export no_proxy='localhost,127.0.0.1,::1'
+export MIHOMO_PROXY_ENV='<port>'
+```
+
+- **端口发现链**：`--port` 覆盖 → `GET /configs` 的 `mixed-port`（运行时真相）→ 只读读取 config.yaml 的 `mixed-port`（兜底）→ 双双失败报错退出，**绝不硬编码 7890**。
+- **`MIHOMO_PROXY_ENV` 探针变量**：`status` 靠它识别「本 shell 已开启」并检测端口漂移（内核换端口后提示重新 `proxy-on`）；重复 eval 幂等，不叠加脏变量。
+- **`no_proxy` 默认最小集**：CIDR 写法在旧版 curl/wget 中不被识别，故私有网段由 `--lan` 显式追加；`all_proxy` 默认不设（部分工具按 socks 语义解释产生歧义），由 `--all` 选配。
+- 变量集合为共享常量：**`off` unset 的全集 = `on` set 的全集（含 `all_proxy` 与探针）**，改一处两处同步，且不触碰集合之外的用户变量。
+
+### 6.5 实现落点
+
+- 新文件 `src/commands/proxyEnv.ts`：emit 模板、端口发现、变量清单常量、`init` 文本（纯函数可测），在 `src/cli.tsx` 的 `proxy` 组注册
+- 端口读取复用现有只读路径（API 客户端 / 配置读取），不新开写盘路径
+
+---
+
+## 7. 总体架构
+
+### 7.1 构建流水线
 
 ```
 ┌─────────────┐   ┌─────────┐   ┌──────────────────────┐   ┌──────────────────┐
@@ -150,7 +235,7 @@ export const VERSION: string =
 3. `--define globalThis.__MIHOMO_TUI_VERSION__="<version>"` 注入版本号
 4. 产物命名为 `mihomo-tui-<version>-<os>-<arch>[.exe]`
 
-### 6.2 `scripts/build-binary.mjs` 接口
+### 7.2 `scripts/build-binary.mjs` 接口
 
 ```
 node scripts/build-binary.mjs \
@@ -175,9 +260,26 @@ node scripts/build-binary.mjs \
 
 **错误处理**：任一目标失败即非零退出；`all` 模式失败的目标在末尾汇总打印。
 
+### 7.3 npm 包发布化改造
+
+```json
+{
+  "name": "@mrchen-hero/mihomo-tui",
+  "files": ["dist", "bin", "README.md", "LICENSE", "CHANGELOG.md"],
+  "prepublishOnly": "npm run typecheck && npm test && npm run build",
+  "prepare": "npm run build"
+}
+```
+
+- **包名定稿**：裸名 `mihomo-tui` 已于 2026-06 被第三方抢注（alias 包），scoped 名 `@mrchen-hero/mihomo-tui` 经 registry 实测未占用、与 GitHub 用户名一致；`npm install -g @mrchen-hero/mihomo-tui@latest` 等价可用
+- **`files` 白名单是必须项**：只发 `dist/` + `bin/` + 文档，`node_modules` 自动排除；tsx 属 devDependency 不随全局安装，bin 胶水的 tsx 回退在用户机不可达——**`dist/` 必须随包发布**，胶水脚本命中 dist 分支
+- **`prepare` 与 `prepublishOnly` 分工**：`prepare` 服务 git 直装（`npm install -g github:MrChen-hero/mihomo-tui#main`，registry 发布前的过渡通道）；`prepublishOnly` 服务 registry 发布的三重门禁（typecheck + 全量测试 + build）。注意 `prepare` 在本地 `npm install` 时也会触发一次 build——可接受，CI 中 `npm ci` 顺带产出 `dist/` 与后续步骤复用
+- **发布纪律**：git tag（`v*`）↔ `package.json` version ↔ CHANGELOG 三者一致才允许 publish；scoped 包首发必须 `npm publish --access public`
+- **与 @openai/codex 模式的差别**：codex 的 npm 包是「安装器壳」——本体 Rust 二进制经 `optionalDependencies` 按平台分发；本项目 npm 包为纯 JS（`dist/` 直跑），无需该机制，待单二进制落地后按 §17 开放问题 4 评估
+
 ---
 
-## 7. 构建产物布局
+## 8. 构建产物布局
 
 ```
 dist-bin/
@@ -206,7 +308,7 @@ sha256  mihomo-tui-0.5.0-linux-x64
 
 ---
 
-## 8. CI 工作流设计
+## 9. CI 工作流设计
 
 新增 `.github/workflows/release.yml`（**不动 `ci.yml`**）：
 
@@ -278,18 +380,33 @@ jobs:
         with:
           files: dist-bin/*
           generate_release_notes: true
+
+  publish:
+    needs: [build, smoke-matrix]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: 'https://registry.npmjs.org' }
+      - run: npm ci
+      - run: npm run typecheck && npm test
+      - run: npm run build
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
 **要点**：
 - **不引入额外编排工具**（无 nx/turbo），原生 `strategy.matrix` + `$default` runner 三平台冒烟
 - Windows runner 上 bash shell 可用（GitHub 默认集成 git-bash）
 - 不签名；release notes 由 `generate_release_notes` 自动生成 + 手动补充
+- **npm publish 与二进制产物同 tag 触发**（`release` 与 `publish` 并行，均依赖 build + smoke-matrix）；scoped 包必须 `--access public`；`NPM_TOKEN` 用 granular token（仅本包 publish 权限）
 
 ---
 
-## 9. 本地开发体验
+## 10. 本地开发体验
 
-### 9.1 新增 npm scripts
+### 10.1 新增 npm scripts
 
 ```json
 {
@@ -302,7 +419,7 @@ jobs:
 }
 ```
 
-### 9.2 `bin/mihomo-tui` 关系
+### 10.2 `bin/mihomo-tui` 关系
 
 **保留不动**。双轨分发策略：
 
@@ -313,18 +430,20 @@ jobs:
 
 两条路径共用 `src/cli.tsx`，行为一致。`bin/mihomo-tui` 新增仅一行版本注入逻辑（见 §5）。
 
-### 9.3 文档
+### 10.3 文档
 
-`README.md` 增加「安装方式」一节，分两个 Tab：Node 安装 / 二进制下载。
+`README.md` 增加「安装方式」一节，分两个 Tab：Node 安装 / 二进制下载；快速开始包含 shell 集成一行（`eval "$(mihomo-tui proxy init)"`）与 `proxy on / off / status` 用法示例。
 
 ---
 
-## 10. 测试策略
+## 11. 测试策略
 
 | 层级 | 工具 | 内容 |
 |---|---|---|
 | 单元 / 集成 | 现有 `vitest run`（CI 已跑） | 不变化 |
 | 构建期 | `npm run typecheck` | 保证 TS 不回归 |
+| **Shell 集成（emit-eval）** | vitest + 真实 bash 子进程 | on/off 输出行集合精确断言；内核离线时 stdout 为空且退出码 3；`init` 输出过 `bash -n`；eval 回环后 `$http_proxy` 与探针变量正确；端口发现链（API → config.yaml → 报错） |
+| **npm 包内容** | `npm pack --dry-run` | 产物仅含 dist/bin/文档白名单；含 `dist/cli.js` 与 `bin/mihomo-tui`；不含 src/tests/node_modules |
 | **二进制冒烟（最小）** | CI step | 1. `--version` 输出与 package.json 一致 2. `--help` 退出码 0 3. `status --json` 在无 mihomo 环境下退出码 = `EXIT.kernel`（3），并输出友好错误 |
 | **二进制 TUI 交互** | 手工 | 跑一次 TUI 进入/退出（mac/linux 各一次）— 不进 CI，列入发布 checklist |
 | **产物校验** | CI step | `sha256sum -c checksums.txt` 自检通过 |
@@ -333,7 +452,7 @@ jobs:
 
 ---
 
-## 11. 风险与缓解
+## 12. 风险与缓解
 
 | 风险 | 概率 | 影响 | 缓解 |
 |---|---|---|---|
@@ -344,10 +463,13 @@ jobs:
 | 跨平台交叉编译对 macOS notarize 的需求 | 高 | 低 | 不签名，README 提供 `xattr -d com.apple.quarantine` 指引 |
 | Windows 上 `--version` 输出 UTF-8 中文乱码 | 中 | 低 | 冒烟脚本设 ` LANG=C.UTF-8`；若仍乱码，README 加 `chcp 65001` 说明 |
 | Deno 兜底路径维护成本 | 低 | 中 | **约定：Deno 路径仅在 Bun blocker 出现时启用；未启用时 `--runtime deno` 打印 `未启用` 报错**，不留半成品代码 |
+| 用户 rc 中已有同名 `proxy` / `proxy-on` 函数 | 低 | 低 | init 输出带来源注释；`proxy status` 报告生效端口与来源；README 说明集成行应追加在旧别名之后以覆盖 |
+| 包名混淆：裸名 `mihomo-tui` 已被他人占用 | 中 | 中 | 全部文档统一 scoped 名 `@mrchen-hero/mihomo-tui`；package.json 的 homepage/repository/description 指回本仓库；README 发布章节明示裸名包与本工具无关 |
+| 发布凭证泄露 | 低 | 高 | `NPM_TOKEN` 使用 granular token（仅本包 publish 权限），仅存 GitHub Secrets；泄露即吊销轮换 |
 
 ---
 
-## 12. 与 `references/` 的借鉴关系
+## 13. 与 `references/` 的借鉴关系
 
 - `references/mihari/scripts/release/release_policy.py`、`github_release_policy.py`：借鉴其「release tag 一致性校验」与「release notes 策略」的**思路**；本 spec 不引入 Python 工具链，仅以 GitHub Actions 原生能力覆盖
 - `references/mihari/scripts/install/install.sh`：v0.5.0 不做安装脚本；v0.6.0 若要做 shell one-liner 安装，再回来参考
@@ -355,19 +477,21 @@ jobs:
 
 ---
 
-## 13. Execution Checkpoints
+## 14. Execution Checkpoints
 
 1. **Bun 兼容性 Spike**：在 `feature/bun-compile` 分支写最小 repro，跑通 §4 的 V1–V5 需验证点；输出结论到 PR 描述
 2. **版本号注入改造**：`src/version.ts` + `bin/mihomo-tui` + `src/cli.tsx` 迁移完成，`npm run build && node bin/mihomo-tui --version` 通过
-3. **本地 `scripts/build-binary.mjs --target linux-x64` 通过**，产物可 `./` 直接启动并完成冒烟三件套
-4. **`--target all` 通过**，5 平台产物 + `checksums.txt` 齐全；本地 `sha256sum -c` 自检通过
-5. **CI `release.yml` 草稿合并到 main**（先 `workflow_dispatch` 触发灰度）
-6. **打 `v0.5.0-rc.0` tag，验证 end-to-end release**：5 个产物 attach 成功、3 平台 smoke-matrix 全绿
-7. **README 安装章节更新** + ROADMAP v0.5.0 勾选完成
+3. **Shell 代理开关集成**：`proxy on/off/status/init` 实现完成，emit-eval 回环、失败纯净性与端口发现链测试全绿——独立于 Bun 路径，可与其余 Checkpoint 并行先行
+4. **本地 `scripts/build-binary.mjs --target linux-x64` 通过**，产物可 `./` 直接启动并完成冒烟三件套
+5. **`--target all` 通过**，5 平台产物 + `checksums.txt` 齐全；本地 `sha256sum -c` 自检通过
+6. **CI `release.yml` 草稿合并到 main**（先 `workflow_dispatch` 触发灰度）
+7. **npm 发布通道**：package.json 发布化改造完成、`npm pack --dry-run` 内容校验通过、release.yml publish job 灰度；registry 首发用 `--access public`
+8. **打 `v0.5.0-rc.0` tag，验证 end-to-end release**：5 个产物 attach 成功、3 平台 smoke-matrix 全绿、npm 包同步发布可安装
+9. **README 安装章节更新（含 `proxy` 一行集成与 on/off 用法、`npm install -g @mrchen-hero/mihomo-tui` 安装说明）** + ROADMAP v0.5.0 勾选完成
 
 ---
 
-## 14. 验证方案
+## 15. 验证方案
 
 | 编号 | 验证项 | 工具 | 通过标准 |
 |---|---|---|---|
@@ -378,20 +502,24 @@ jobs:
 | R5 | Release attach | GitHub Release 网页 | 5 个二进制 + checksums.txt 均可下载且 sha256 匹配 |
 | R6 | macOS Apple Silicon 手测 | 运行 TUI 一次 | 能进入/退出 alternateScreen，Ctrl+C 正常 |
 | R7 | Windows 手测 | powershell 跑 `--version` / `status --json` | 中文输出无乱码（或 README 已说明 workaround） |
+| R8 | Shell 集成回环 | `bash -c 'eval "$(mihomo-tui proxy on)"; echo $http_proxy'` | 值与混合端口一致；`proxy off` 后为空；内核离线时 stdout 为空且退出码 3 |
+| R9 | npm 安装回环 | `npm pack && npm install -g ./mihomo-tui-*.tgz`（或发布后装 registry 版） | `mihomo-tui --version` 与 package.json 一致；包内容过白名单校验；卸载无残留 |
 
 ---
 
-## 15. 兼容性与迁移
+## 16. 兼容性与迁移
 
 - **Node ≥22 用户**：完全不受影响；`npm install -g mihomo-tui` + `bin/mihomo-tui` 链路保留。**无需迁移**。
 - **`bin/mihomo-tui` 是否保留**：**保留**。理由：(1) 双轨承诺；(2) REPL 调试与二次开发仍走 Node 路径；(3) `tsx` 直跑 dev 工作流依赖它。仅在文件内新增一行 `globalThis.__MIHOMO_TUI_VERSION__` 注入（见 §5）。
 - **配置目录** `~/.config/mihomo-tui/`：不变，二进制与 Node 版共享。
+- **shell 环境**：`proxy on/off` 只操作固定变量清单（`http_proxy` / `https_proxy` / `no_proxy` / `all_proxy` / `MIHOMO_PROXY_ENV`），不触碰其余变量；已有同名 rc 函数的用户以追加顺序决定覆盖关系。
+- **版本同步纪律**：git tag（`v*`）↔ `package.json` version ↔ CHANGELOG 三者一致才允许 publish；npm 包与单二进制出自同一 tag，共享同一版本号。
 - **退出码 / `--json` 协议**：不变，自动化脚本无缝切换。
 - **未来若放弃 Node 分发**：至少在 v1.0.0 之前不做；重大变更须走新 spec 评审。
 
 ---
 
-## 16. 开放问题
+## 17. 开放问题
 
 1. **Bun 具体锁定版本**：在 Checkpoint 1 spike 时确定并写入 `release.yml`（候选 `1.1.x` 最新稳定）。是否同时在 `package.json.engines` 加 `bun` 字段需讨论。
 2. **是否需要 `install.sh` 一键脚本**：当前判断**不需要**（YAGNI），留给 v0.6.0 视用户反馈再议。
@@ -400,6 +528,18 @@ jobs:
 5. **Deno 兜底路径何时启用**：仅在 Bun 出现 v0.5.0 截止前不可修复的 blocker 时启用；启用后需要在 ROADMAP 增补一项「Deno 路径专项」。
 6. **产物大小优化**：是否引入 `--minify` + `--sourcemap=none`、尝试 `--bytecode`（Bun 1.1.30+ 实验性）？建议**先 ship 再优化**。
 7. **测速/GitHub Release 在中国镜像可访问性**：发布渠道是否镜像到 Gitee / 自建 alist？本 spec 不管；由后续运营决定。
+8. **fish / PowerShell 集成**何时补齐：`--shell` 参数已预留；视用户反馈在 v0.6.0 评估。
+
+---
+
+## 18. 技术债与阶段待办
+
+实施过程中确认无法在本阶段闭环的事项记录于此，按阶段追加；闭环后勾选。
+
+- [ ] **npm 发布前置（用户操作）**：注册 npm 账号并配置 GitHub Secrets `NPM_TOKEN`（granular token，仅 `@mrchen-hero/mihomo-tui` 的 publish 权限）；publish job 在 token 就绪前以跳过状态存在
+- [ ] **端到端 release 验证（用户操作）**：push `v0.5.0-rc.0` tag 触发 release.yml 全链路（5 产物 attach、3 平台 smoke-matrix、npm 同步发布）
+- [ ] **真机手测（R6/R7）**：macOS Apple Silicon 与 Windows 各跑一次 TUI 进出与 `--version` / `status --json`
+- [ ] **版本发布节奏**：`package.json` bump 0.5.0 与 CHANGELOG `[0.5.0]` 节在 rc tag 阶段完成
 
 ---
 
