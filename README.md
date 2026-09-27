@@ -103,23 +103,32 @@ chmod +x mihomo-tui-*-linux-x64
 
 ## 第一次使用
 
-1. `mihomo-tui status` 确认内核可达，输出内核版本、模式、端口与 provider 概览；连不上时
-   检查 mihomo 是否在运行、`external-controller` 地址与 `secret` 是否正确。
-2. `~/.config/mihomo-tui/config.json` 首次运行自动生成，确认 `api`、`secret` 与
+1. **还没有 mihomo 内核？** 一条命令自助闭环：
+
+   ```bash
+   mihomo-tui kernel install     # 下载安装最新稳定版内核 + 生成最小引导配置
+   ```
+
+   官方源失败自动回退镜像（可 `--mirror` 指定、`--port` 自定义控制口端口）；`config.yaml`
+   已存在时绝不触碰。已有内核的用户跳过本步。
+2. `mihomo-tui status` 确认内核可达，输出内核版本、模式、端口与 provider 概览；连不上时
+   检查内核是否已启动（安装但未启动的场景报错会单独提示）、`external-controller` 地址与
+   `secret` 是否正确。
+3. `~/.config/mihomo-tui/config.json` 首次运行自动生成，确认 `api`、`secret` 与
    `mihomoDir`（订阅事务和规则编辑器写 `config.yaml` 的位置）指向你的内核。
-3. 进入 TUI（直接运行 `mihomo-tui`），在订阅页按 `a` 新增订阅；已有「整份订阅」旧配置的
+4. 进入 TUI（直接运行 `mihomo-tui`），在订阅页按 `a` 新增订阅；已有「整份订阅」旧配置的
    用户可用 `node scripts/migrate-config.mjs --dry-run --diff` 预览改造方案，确认后 `--apply`。
-4. 节点页 `Enter` 选用节点、`t` 测速；订阅页 `u` 更新当前订阅、`U` 全部更新。
-5. 要用 `proxy on` / `proxy off` / `proxy status` 快捷命令管理本 shell 的系统代理环境变量，
+5. 节点页 `Enter` 选用节点、`t` 测速；订阅页 `u` 更新当前订阅、`U` 全部更新。
+6. 要用 `proxy on` / `proxy off` / `proxy status` 快捷命令管理本 shell 的系统代理环境变量，
    把集成装进 bashrc（首次运行 `mihomo-tui` 时命令行也会输出同样提示）：
 
    ```bash
    echo 'eval "$(mihomo-tui proxy init)"' >> ~/.bashrc && source ~/.bashrc
    proxy on        # 开启本 shell 的系统代理，端口自动发现
    ```
-6. 备份与迁移：配置变更自动留 `config.yaml.bak.*`（保留 7 天）；换设备时拷贝
+7. 备份与迁移：配置变更自动留 `config.yaml.bak.*`（保留 7 天）；换设备时拷贝
    `~/.config/mihomo-tui/` 与 mihomo 目录即可完整复原。
-7. 注意：新增 / 删除订阅会重启一次 mihomo 服务（秒级断流，更新不断流）；切节点、切模式等
+8. 注意：新增 / 删除订阅会重启一次 mihomo 服务（秒级断流，更新不断流）；切节点、切模式等
    运行时改动重启后丢失，需持久化的变更写入 `config.yaml` 后执行 `mihomo-tui reload`。
 
 ## CLI 速查
@@ -137,6 +146,8 @@ mihomo-tui rules test example.com --json # hit / miss / unsupported
 mihomo-tui logs -f                       # 实时日志跟随
 mihomo-tui conn ls -s traffic -n 50      # 连接列表，按流量排序
 mihomo-tui conn close <id|--all>         # 关闭连接
+mihomo-tui kernel ls                     # 本地与远端内核版本
+mihomo-tui kernel install [version]      # 下载安装内核与引导配置（--port/--mirror/--alpha）
 mihomo-tui reload                        # 热重载配置（内核不重启）
 ```
 

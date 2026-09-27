@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- 新增 `mihomo-tui kernel ls / install` 命令：CLI 侧下载安装内核（官方→镜像自动回退、sha256 与版本标记校验、`--port` 自定义控制口端口、`--mirror` 单源锁定、`--alpha`），`config.yaml` 缺失时生成最小引导配置，实现无内核新机器的自助闭环。
+- 内核不可达报错按部署场景三态引导（systemd 单元 / 已装未启动 / 全新机器提示 `kernel install`）；首次运行提示补充内核安装指引。
 - 修复分发渠道在国内网络的可用性：Release notes 自动附加各产物的 gh-proxy 镜像下载链接，README 安装节补充镜像前缀用法并将校验命令改为按平台 `grep | sha256sum -c` 写法。
 - 首次生成配置时向交互终端输出一行引导（proxy init 集成用法）：新版 npm 安装期不再执行被安装包的 postinstall，提示改在首次运行的确定性时机给出；stdout 纯净契约不受影响。
 - README「第一次使用」恢复可直接复制的 proxy init 一行式安装命令。
