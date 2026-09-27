@@ -399,6 +399,8 @@ export interface KernelServiceDeps {
   fetchImpl?: typeof fetch
   /** 注入服务运行态（测试）；缺省探测 systemctl is-active */
   isServiceActive?: boolean
+  /** 注入 systemd 单元存在性（测试）；缺省真实探测。CI 无用户单元，相关测试必须显式注入 */
+  hasSystemdUnit?: boolean
 }
 
 export async function runKernelServiceInstall(
@@ -415,7 +417,7 @@ export async function runKernelServiceInstall(
   const port = controllerPortFromApi(config.api)
   const controllerBusy = await probeController(port, deps.fetchImpl)
   const serviceActive = deps.isServiceActive ?? isServiceActiveHere()
-  if (controllerBusy && !serviceActive && hasSystemdUnit()) {
+  if (controllerBusy && !serviceActive && (deps.hasSystemdUnit ?? hasSystemdUnit())) {
     process.stderr.write(
       `错误：控制口端口 ${port} 已被其他 mihomo 实例占用（大概率是前台启动的进程）。\n` +
         '请先停止它（前台进程 Ctrl+C；或 pkill -f "bin/mihomo"），再执行 kernel service install。\n',

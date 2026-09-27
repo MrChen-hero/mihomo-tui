@@ -320,7 +320,7 @@ describe('kernel service install 冲突防呆', () => {
       await expect(
         runKernelServiceInstall(config(), {}, {
           configPath, home: root, flavor: 'systemd', user: 'ubuntu',
-          fetchImpl: responding(), isServiceActive: false,
+          fetchImpl: responding(), isServiceActive: false, hasSystemdUnit: true,
         }),
       ).rejects.toThrow('exit:1')
       const out = errSpy.mock.calls.map((c) => String(c[0])).join('')
@@ -373,7 +373,7 @@ describe('kernel install 收尾防呆', () => {
   it('控制口已有旧实例在运行：提示重启它而不是再起一个', async () => {
     const cap = captureStdout()
     try {
-      await runKernelInstall(config(), undefined, {}, baseDeps({ fetchImpl: fetchFor({ gz: gzOf(scriptFor(VERSION_LINE)) }) }))
+      await runKernelInstall(config(), undefined, {}, baseDeps({ fetchImpl: fetchFor({ gz: gzOf(scriptFor(VERSION_LINE)) }), hasService: false }))
     } finally {
       cap.restore()
     }
@@ -385,7 +385,7 @@ describe('kernel install 收尾防呆', () => {
   it('控制口空闲（全新机器）：给出前台启动与自启两条路径', async () => {
     const cap = captureStdout()
     try {
-      await runKernelInstall(config(), undefined, {}, baseDeps({ fetchImpl: offline() }))
+      await runKernelInstall(config(), undefined, {}, baseDeps({ fetchImpl: offline(), hasService: false }))
     } finally {
       cap.restore()
     }
