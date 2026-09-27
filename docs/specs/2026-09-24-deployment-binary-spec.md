@@ -284,14 +284,14 @@ node scripts/build-binary.mjs \
 {
   "name": "@morndream/mihomo-tui",
   "files": ["dist", "bin", "README.md", "LICENSE", "CHANGELOG.md"],
-  "prepublishOnly": "npm run typecheck && npm test && npm run build",
+  "prepublishOnly": "npm run typecheck && npm test",
   "prepare": "npm run build"
 }
 ```
 
 - **包名定稿**：裸名 `mihomo-tui` 已于 2026-06 被第三方抢注（alias 包），scoped 名 `@morndream/mihomo-tui` 经 registry 实测未占用、与 npm 发布账号一致（2026-09-27 定稿；scope 跟随 npm 账号 `morndream`，与 GitHub 用户名无关）；`npm install -g @morndream/mihomo-tui@latest` 等价可用
 - **`files` 白名单是必须项**：只发 `dist/` + `bin/` + 文档，`node_modules` 自动排除；tsx 属 devDependency 不随全局安装，bin 胶水的 tsx 回退在用户机不可达——**`dist/` 必须随包发布**，胶水脚本命中 dist 分支
-- **`prepare` 与 `prepublishOnly` 分工**：`prepare` 服务 git 直装（`npm install -g github:MrChen-hero/mihomo-tui#main`，registry 发布前的过渡通道）；`prepublishOnly` 服务 registry 发布的三重门禁（typecheck + 全量测试 + build）。注意 `prepare` 在本地 `npm install` 时也会触发一次 build——可接受，CI 中 `npm install` 顺带产出 `dist/` 与后续步骤复用（仓库不提交 package-lock.json，`npm ci` 不可用）。
+- **`prepare` 与 `prepublishOnly` 分工**：`prepare` 服务 git 直装（`npm install -g github:MrChen-hero/mihomo-tui#main`，registry 发布前的过渡通道）并承担发布时的构建；`prepublishOnly` 只做发布门禁（typecheck + 全量测试），build 由 `prepare` 独占——官方生命周期 `prepublishOnly → prepack → prepare` 下 build 恰好在打包前执行一次，避免发布时双跑。注意 `prepare` 在本地 `npm install` 时也会触发一次 build——可接受，CI 中 `npm install` 顺带产出 `dist/` 与后续步骤复用（仓库不提交 package-lock.json，`npm ci` 不可用）。
 - **发布纪律**：git tag（`v*`）↔ `package.json` version ↔ CHANGELOG 三者一致才允许 publish；scoped 包首发必须 `npm publish --access public`
 - **与 @openai/codex 模式的差别**：codex 的 npm 包是「安装器壳」——本体 Rust 二进制经 `optionalDependencies` 按平台分发；本项目 npm 包为纯 JS（`dist/` 直跑），无需该机制，待单二进制落地后按 §17 开放问题 4 评估
 
@@ -561,7 +561,7 @@ jobs:
 - [ ] **真机手测（R6/R7）**：macOS Apple Silicon 与 Windows 各跑一次 TUI 进出与 `--version` / `status --json`
 - [ ] **版本发布节奏**：rc tag 前把 `package.json` version bump 为与 tag 一致（如 `v0.5.0-rc.0` ↔ `0.5.0-rc.0`，build job 守卫强制），CHANGELOG 建立对应版本节；正式 `v0.5.0` 时去掉 prerelease 标记
 - [ ] **npm granular token 政策迁移（2027-01 前评估）**：npm 官方预告 2027-01 起 granular token 直接 publish 将移除（改为 stage-only 流程）；现有 token 2026-12-26 到期，重建时需按届时官方文档操作，release.yml publish job 已留前瞻注释
-- [ ] **vitest `poolOptions` 弃用迁移**：vitest 5 运行时警告 `poolOptions` 将在未来大版本移除（迁移为顶层选项）；`vitest.config.ts` 的 `poolOptions.forks.singleFork` 需按官方迁移指南改写（当前仅警告、行为正常）
+- [x] **vitest `poolOptions` 弃用清理（2026-09-27 闭环）**：`poolOptions.forks.singleFork` 在 vitest 5 是静默 no-op（官方 v4 迁移指南：移除 poolOptions，等价写法 `maxWorkers: 1 + isolate: false`）；实测默认并行 fork 更快（43 文件约 13s vs 单进程约 54s），故直接移除死配置走默认并行，未迁移
 
 ---
 
