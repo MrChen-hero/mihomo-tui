@@ -187,7 +187,33 @@ export function describeKernelHint(probe: KernelEnvProbe = probeKernelEnv): stri
     case 'binary':
       return '检测到已安装的 mihomo 内核但控制口不可达：确认内核进程已启动，且 external-controller 指向控制口地址'
     case 'none':
-      return '未检测到 mihomo 内核。运行 mihomo-tui kernel install 自动下载安装内核与最小配置；详见 README《第一次使用》'
+      // 首装教学场景：像 --help 一样给出完整参数说明。
+      // 下面的 Arguments/Options 文案须与 cli.tsx 中 kernel install 的定义保持同步。
+      return [
+        '',
+        '未检测到 mihomo 内核。运行 mihomo-tui kernel install 快速安装并配置内核。',
+        "安装后建议执行: echo 'eval \"$(mihomo-tui proxy init)\"' >> ~/.bashrc && source ~/.bashrc",
+        '以解锁 proxy on / off / proxy 快捷命令',
+        '',
+        '示例：',
+        '',
+        '  mihomo-tui kernel install                                  # 最新稳定版',
+        '  mihomo-tui kernel install --port 19091                     # 控制口改 19091',
+        '  mihomo-tui kernel install --mirror https://gh-proxy.com/   # 国内网络直达镜像',
+        '',
+        'Arguments:',
+        '  version            内核版本（如 1.19.30 或 v1.19.30），缺省安装最新稳定版',
+        '',
+        'Options:',
+        '  --alpha            安装最新 alpha 版',
+        '  --port <n>         引导配置的 external-controller 端口，默认 19090',
+        '  --mirror <prefix>  自定义下载镜像前缀（形如 https://gh-proxy.com/）',
+        '',
+        '安装完成后：',
+        '',
+        '  ~/bin/mihomo -d ~/.config/mihomo     # 启动内核（前台；引导配置：代理端口 17890）',
+        '  mihomo-tui status                    # 确认连接后，直接运行 mihomo-tui 进入 TUI',
+      ].join('\n')
   }
 }
 

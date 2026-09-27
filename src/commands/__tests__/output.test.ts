@@ -237,8 +237,16 @@ describe('describeKernelHint 内核不可达引导', () => {
     expect(describeKernelHint(() => 'binary')).toContain('已安装')
   })
 
-  it('none：全新机器 → 给出 kernel install 自助闭环命令', () => {
-    expect(describeKernelHint(() => 'none')).toContain('mihomo-tui kernel install')
+  it('none：全新机器 → 完整教程（快速安装 + proxy init + 参数说明）', () => {
+    const hint = describeKernelHint(() => 'none')
+    expect(hint).toContain('未检测到 mihomo 内核')
+    expect(hint).toContain('mihomo-tui kernel install 快速安装并配置内核')
+    expect(hint).toContain("echo 'eval \"$(mihomo-tui proxy init)\"' >> ~/.bashrc")
+    expect(hint).toContain('Arguments:')
+    expect(hint).toContain('--port <n>')
+    expect(hint).toContain('--mirror <prefix>')
+    expect(hint).toContain('安装完成后：')
+    expect(hint.startsWith('\n')).toBe(true) // 与错误行之间空一行
   })
 })
 
