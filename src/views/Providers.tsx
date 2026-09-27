@@ -449,13 +449,18 @@ export function ProvidersView({
                 const url = values['url'] ?? ''
                 const group = values['group'] ?? ''
                 const intervalText = (values['interval'] ?? '').trim()
-                const interval = intervalText ? Number(intervalText) : 0
+                // 编辑时留空 = 不修改该字段（旧值保留）；新增时留空 = 0（不自动更新）
+                const interval = intervalText
+                  ? Number(intervalText)
+                  : dialog.submitLabel === 'add'
+                    ? 0
+                    : undefined
                 const fields = {
                   name,
                   type,
                   url,
                   group: group || undefined,
-                  interval,
+                  ...(interval !== undefined ? { interval } : {}),
                 }
                 if (dialog.submitLabel === 'add') {
                   void runFlow('添加订阅', ADD_STEPS, async (onProgress) => {

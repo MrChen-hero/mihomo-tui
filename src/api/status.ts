@@ -29,7 +29,14 @@ export function classify(
   thresholds: DelayThresholds,
   testUrl?: string,
 ): NodeDelay {
-  const delay = latestDelay(proxy, testUrl)
+  return classifyDelayValue(latestDelay(proxy, testUrl), thresholds)
+}
+
+/** 纯延迟值分级（无节点上下文时使用，如组测速结果的本地回填） */
+export function classifyDelayValue(
+  delay: number | undefined,
+  thresholds: DelayThresholds,
+): NodeDelay {
   // 从未测过：history 为空，与「测过但失败」是两件事
   if (delay === undefined) return { status: 'untested', delay: undefined }
   // 内核用 delay=0 表示该次测试失败

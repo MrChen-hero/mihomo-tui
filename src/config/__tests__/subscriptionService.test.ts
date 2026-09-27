@@ -389,3 +389,20 @@ describe('首装闭环：无清单文件与空清单场景', () => {
     expect(subNames()).toEqual(['gamma'])
   })
 })
+
+describe('编辑订阅的更新间隔语义', () => {
+  it('未提供 interval 保留原值；提供时按分钟换算为秒写入', async () => {
+    const { deps } = harness()
+    const intervalOf = (provider: string): number => {
+      const config = YAML.parse(readFileSync(join(mihomoDir, 'config.yaml'), 'utf8'))
+      return config['proxy-providers'][provider].interval
+    }
+    const before = intervalOf('alpha')
+
+    await editSubscription('alpha', { name: 'alpha2' }, deps) // 不带 interval → 保留
+    expect(intervalOf('alpha2')).toBe(before)
+
+    await editSubscription('alpha2', { interval: 5 }, deps) // 5 分钟 → 300 秒
+    expect(intervalOf('alpha2')).toBe(300)
+  })
+})

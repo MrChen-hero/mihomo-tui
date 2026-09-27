@@ -208,7 +208,11 @@ export function ProxiesView({
         // 小写 t：测当前选中的单个节点
         if (focus === 'nodes') {
           const node = nodes[nodeIndex]
-          if (node) void proxies.testNode(node.name)
+          if (node) {
+            void proxies.testNode(node.name).then((hint) => {
+              if (hint) onMessage(hint)
+            })
+          }
         } else if (currentGroup) {
           void proxies.testGroup(currentGroup.name)
           onMessage(`开始测速 ${currentGroup.name}（${currentGroup.nodeCount} 个节点）`)

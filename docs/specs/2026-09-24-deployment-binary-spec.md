@@ -564,6 +564,8 @@ jobs:
 - [x] **首装闭环（2026-09-27）**：新增 `mihomo-tui kernel ls / install`——CLI 侧复用 installer 多源回退（`--mirror` 单源锁定；默认 auto = 官方→镜像）与 sha256/`-v` 校验，`--port` 自定义引导配置的控制口端口并同步 config.json api，`config.yaml` 已存在时零覆盖；内核不可达报错按「systemd 单元 / 已装未启动 / 全新机器」三态引导（npm 11+ 不执行被安装包 postinstall，安装期提示不可行，提示落在首装提示与报错路径两个确定性时机）
 - [ ] **kernel install 装后自动拉起（轻量托管，技术债）**：当前装完需用户手动启动内核；后续 install 完成后自动以 detached 方式启动内核（日志落盘、pidfile 记录于 `~/.local/share/mihomo-tui/kernel.pid`），轮询 `/version` 就绪后报告；新增 `kernel stop` / `kernel status` 管理托管进程；与 systemd 路径互斥共存（检测到单元走既有服务重启语义，无单元才走 detached）；`--no-start` 供脚本化跳过
 - [ ] **内核安装自动服务化（平台分治，技术债）**：Linux 自动写 systemd `--user` 单元并 `enable --now`（开机自启、崩溃自拉）；macOS 走 launchd、Windows 走系统服务——三平台各一套实现，工作量大，待轻量托管方案验证后按平台逐步落地
+- [x] **mihomo v1.19.25+ 兼容性适配（2026-09-28 实测定位）**：该区间版本 provider 节点不再注册进 `/proxies` 查询表（组引用与健康检查仍正常），按节点名测速全部 404。工具适配：组测速切换为单次 `/group/{name}/delay` 端点（新旧内核通吃）+ overlay 兜底显示；单节点 404 明确提示。已向上游确认的对照实验：v1.19.24 注册 159 节点、v1.19.31 仅 6 个内建出站
+- [ ] **自建/第三方订阅的节点名稳定性要求（文档项）**：节点名内嵌实时流量（如 `|📊95.96GB`）会让每次订阅更新都改名，测速历史随之作废——需在 README 说明自建订阅接入约定；工具侧 exclude-filter 只覆盖中文伪装关键词，`📊/GB` 形态的规则外节点名无法过滤（属订阅源问题，不改过滤）
 - [ ] **TUI 未连接引导态（技术债）**：无内核时 TUI 目前在预检即退出（exit 3 + 场景化提示）；后续允许进入 TUI 显示未连接状态并直达设置页内核下载，替代 CLI 引导路径
 - [ ] **npm granular token 政策迁移（2027-01 前评估）**：npm 官方预告 2027-01 起 granular token 直接 publish 将移除（改为 stage-only 流程）；现有 token 2026-12-26 到期，重建时需按届时官方文档操作，release.yml publish job 已留前瞻注释
 - [ ] **npm 首发的 `latest` 占位（自愈项）**：实测 npm 首次发布无论 `--tag next` 与否都会把 `latest` 指向首个版本——当前 `latest` 暂指 `0.5.0-rc.0`；不要手工 `dist-tag rm latest`（裸装通道会在稳定版发布前无版本可装），正式 `v0.5.0` 发布时 `latest` 自动翻正、该项闭环

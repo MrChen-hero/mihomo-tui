@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runKernelInstall, runKernelLs, makeProgressWriter, type KernelCommandDeps } from '../kernel.js'
+import { runKernelInstall, runKernelLs, runKernelServiceInstall, makeProgressWriter, type KernelCommandDeps } from '../kernel.js'
 import { DEFAULT_CONFIG, loadConfig, type AppConfig } from '../../config.js'
 import { assetNamesFor } from '../../kernel/releases.js'
 import type { InstallProgress } from '../../kernel/installer.js'
@@ -65,6 +65,13 @@ function fetchFor(options: { gz?: Buffer; releaseBody?: unknown; urls?: string[]
   return (async (url: RequestInfo | URL) => {
     const u = String(url)
     options.urls?.push(u)
+    if (u.endsWith('/version')) {
+      // 控制口探活（收尾防呆用）：模拟已有内核实例在响应
+      return new Response(JSON.stringify({ meta: true, version: 'v1.19.24' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
     if (u.includes('/repos/MetaCubeX/mihomo/releases')) {
       return new Response(JSON.stringify(options.releaseBody ?? releaseJson()), {
         status: 200,
@@ -289,5 +296,101 @@ describe('makeProgressWriter 安装进度', () => {
     expect(joined).toContain('50%\n')
     expect(joined).toContain('100%\n')
     expect(out.every((s) => s.endsWith('\n'))).toBe(true)
+  })
+})
+
+/** 恒定响应的 fetch（模拟控制口有实例在运行） */
+const responding = (): typeof fetch =>
+  (async () => new Response('{"version":"v1.19.24"}', { status: 200 })) as unknown as typeof fetch
+/** 控制口空闲（/version 探活失败）、但 release API 与资产下载正常放行 */
+const offline = (): typeof fetch => (async (url: RequestInfo | URL) => {
+  const u = String(url)
+  if (u.endsWith('/version')) throw new TypeError('fetch failed (控制口空闲)')
+  return fetchFor({ gz: gzOf(scriptFor(VERSION_LINE)) })(url)
+}) as unknown as typeof fetch
+
+describe('kernel service install 冲突防呆', () => {
+  it('控制口被非服务实例占用：拒绝安装并给出处理指引', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`)
+    }) as never)
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const unitPath = join(root, 'home', '.config', 'systemd', 'user', 'mihomo.service')
+    try {
+      await expect(
+        runKernelServiceInstall(config(), {}, {
+          configPath, home: root, flavor: 'systemd', user: 'ubuntu',
+          fetchImpl: responding(), isServiceActive: false,
+        }),
+      ).rejects.toThrow('exit:1')
+      const out = errSpy.mock.calls.map((c) => String(c[0])).join('')
+      expect(out).toContain('已被其他 mihomo 实例占用')
+      expect(out).toContain('pkill')
+      expect(existsSync(unitPath)).toBe(false) // 未写服务定义
+    } finally {
+      exitSpy.mockRestore()
+      errSpy.mockRestore()
+    }
+  })
+
+  it('控制口无实例：正常安装并写入服务定义', async () => {
+    const cap = captureStdout()
+    try {
+      await runKernelServiceInstall(config(), {}, {
+        configPath, home: root, flavor: 'systemd', user: 'ubuntu',
+        exec: (() => ({ status: 0, stdout: 'active' })) as never,
+        fetchImpl: offline(), isServiceActive: false,
+      })
+    } finally {
+      cap.restore()
+    }
+    expect(cap.lines()).toContain('服务已启动并设为开机自启')
+    expect(existsSync(join(root, '.config', 'systemd', 'user', 'mihomo.service'))).toBe(true)
+  })
+
+  it('服务已启用但控制口未响应：给出排查提示', async () => {
+    let calls = 0
+    const flaky = (): typeof fetch => (async () => {
+      calls += 1
+      if (calls === 1) return new Response('{"version":"v1.19.24"}', { status: 200 }) // 前置探活：旧实例在
+      throw new TypeError('fetch failed') // 后置探活：服务起后仍无响应
+    }) as unknown as typeof fetch
+    const cap = captureStdout()
+    try {
+      await runKernelServiceInstall(config(), {}, {
+        configPath, home: root, flavor: 'systemd', user: 'ubuntu',
+        exec: (() => ({ status: 0, stdout: 'active' })) as never,
+        fetchImpl: flaky(), isServiceActive: true,
+      })
+    } finally {
+      cap.restore()
+    }
+    expect(cap.lines()).toContain('控制口 19090 未响应')
+  })
+})
+
+describe('kernel install 收尾防呆', () => {
+  it('控制口已有旧实例在运行：提示重启它而不是再起一个', async () => {
+    const cap = captureStdout()
+    try {
+      await runKernelInstall(config(), undefined, {}, baseDeps({ fetchImpl: fetchFor({ gz: gzOf(scriptFor(VERSION_LINE)) }) }))
+    } finally {
+      cap.restore()
+    }
+    const out = cap.lines()
+    expect(out).toContain('重启它以加载新装的内核')
+    expect(out).not.toContain('下一步：')
+  })
+
+  it('控制口空闲（全新机器）：给出前台启动与自启两条路径', async () => {
+    const cap = captureStdout()
+    try {
+      await runKernelInstall(config(), undefined, {}, baseDeps({ fetchImpl: offline() }))
+    } finally {
+      cap.restore()
+    }
+    const out = cap.lines()
+    expect(out).toContain('下一步：')
+    expect(out).toContain('或配置开机自启：mihomo-tui kernel service install')
   })
 })

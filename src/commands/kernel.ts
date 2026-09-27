@@ -72,6 +72,34 @@ function usageExit(message: string): never {
   process.exit(EXIT.usage)
 }
 
+/** 控制口探活：端口上有任何 HTTP 响应（含 401）都视为「有实例在运行」 */
+export async function probeController(port: number, fetchImpl?: typeof fetch): Promise<boolean> {
+  try {
+    await (fetchImpl ?? fetch)(`http://127.0.0.1:${port}/version`, {
+      signal: AbortSignal.timeout(1500),
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function controllerPortFromApi(api: string): number {
+  try {
+    const port = Number(new URL(api).port)
+    if (Number.isInteger(port) && port > 0) return port
+  } catch {
+    // api 非法时走默认端口
+  }
+  return 19090
+}
+
+/** 本机的 systemd --user mihomo 服务是否处于运行态 */
+function isServiceActiveHere(): boolean {
+  const probe = spawnSync('systemctl', ['--user', 'is-active', 'mihomo'], { timeout: 2000 })
+  return probe.stdout?.toString().trim() === 'active'
+}
+
 function parsePort(raw: string | undefined): number {
   if (raw === undefined) return BOOTSTRAP_CONTROLLER_PORT
   const port = Number(raw)
@@ -341,8 +369,14 @@ export async function runKernelInstall(
     lines.push(`已有自定义 api（${fresh.api}），未改动；新内核控制口为 ${desiredApi}`)
   }
   lines.push('')
+  // 前台/守护进程冲突防呆：控制口已有实例在响应（且不是刚被我们重启的服务），
+  // 说明旧实例还占着端口——提示重启它，而不是再起一个新实例
+  const controllerBusy = serviceAttached ? false : await probeController(port, deps.fetchImpl)
   if (serviceAttached) {
     lines.push('检测到 systemd --user 服务：已自动重启内核并确认版本')
+  } else if (controllerBusy) {
+    lines.push(`⚠ 检测到端口 ${port} 已有内核实例在运行——重启它以加载新装的内核`)
+    lines.push('或配置开机自启：mihomo-tui kernel service install（含冲突检测）')
   } else {
     lines.push(`下一步：${binPath} -d ${mihomoDir}     # 启动内核`)
     lines.push('或配置开机自启：mihomo-tui kernel service install')
@@ -361,6 +395,10 @@ export interface KernelServiceDeps {
   home?: string
   flavor?: ServiceFlavor
   user?: string
+  /** 控制口探活注入（测试）；缺省真实 fetch */
+  fetchImpl?: typeof fetch
+  /** 注入服务运行态（测试）；缺省探测 systemctl is-active */
+  isServiceActive?: boolean
 }
 
 export async function runKernelServiceInstall(
@@ -372,6 +410,19 @@ export async function runKernelServiceInstall(
     binPath: config.mihomoBin ?? MIHOMO_BIN_DEFAULT,
     mihomoDir: config.mihomoDir || MIHOMO_DIR_DEFAULT,
   }
+  // 前台/守护进程冲突防呆：控制口已被一个「非服务实例」占用时（大概率是
+  // 按收尾提示前台启动的进程），服务实例会绑定失败并静默劣化，必须先拦下
+  const port = controllerPortFromApi(config.api)
+  const controllerBusy = await probeController(port, deps.fetchImpl)
+  const serviceActive = deps.isServiceActive ?? isServiceActiveHere()
+  if (controllerBusy && !serviceActive && hasSystemdUnit()) {
+    process.stderr.write(
+      `错误：控制口端口 ${port} 已被其他 mihomo 实例占用（大概率是前台启动的进程）。\n` +
+        '请先停止它（前台进程 Ctrl+C；或 pkill -f "bin/mihomo"），再执行 kernel service install。\n',
+    )
+    process.exit(EXIT.error)
+  }
+
   const result = installService(input, deps)
   if (options.json) {
     printJson(result)
@@ -389,6 +440,10 @@ export async function runKernelServiceInstall(
   ]
   if (result.lingerHint) lines.push(`提示：SSH 断开后保活需要一次提权：${result.lingerHint}`)
   lines.push(...result.errors.map((e) => `⚠ ${e}`))
+  // 服务拉起后控制口仍未响应：端口仍被占用或内核启动失败，给排查入口
+  if (result.enabled && !(await probeController(port, deps.fetchImpl))) {
+    lines.push(`⚠ 控制口 ${port} 未响应——排查：journalctl --user -u mihomo`)
+  }
   lines.push('验证：mihomo-tui status')
   process.stdout.write(lines.join('\n') + '\n')
   if (!result.enabled) process.exit(EXIT.error)

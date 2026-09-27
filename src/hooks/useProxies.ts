@@ -6,8 +6,8 @@
  * TUI 默认只展示节点组，因为只有它们能回答「哪个节点能用」。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiBusinessError, MihomoClient } from '../api/client.js'
-import { classify, type NodeStatus } from '../api/status.js'
+import { ApiBusinessError, HttpStatusError, MihomoClient } from '../api/client.js'
+import { classify, classifyDelayValue, type NodeStatus } from '../api/status.js'
 import type { ProxyItem } from '../api/types.js'
 import type { AppConfig } from '../config.js'
 import { AIRPORT_GROUP_PREFIX } from '../config/skeleton.js'
@@ -44,7 +44,7 @@ export interface UseProxiesResult {
   /** 解除 url-test/fallback 组的钉选 */
   unfix: (group: string) => Promise<void>
   testGroup: (group: string) => Promise<void>
-  testNode: (name: string) => Promise<void>
+  testNode: (name: string) => Promise<string | undefined>
   testingGroup: string | undefined
   /** 整组测速进度：已回填数量 / 总数 */
   progress: { done: number; total: number } | undefined
@@ -80,6 +80,9 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
   const [testing, setTesting] = useState<Set<string>>(new Set())
+  // 组测速结果的本地回填：mihomo v1.19.25+ 的回归会让 provider 节点缺席
+  // /proxies 表（历史无从读取），组端点的结果在这里兜底显示
+  const [delayOverlay, setDelayOverlay] = useState<Record<string, number>>({})
   const [testingGroup, setTestingGroup] = useState<string | undefined>()
   const [progress, setProgress] = useState<{ done: number; total: number } | undefined>()
   const mounted = useRef(true)
@@ -142,7 +145,9 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
       )
       const alive = realNodes.filter((name) => {
         const node = proxies[name]
-        return node && node.alive && node.history.length > 0
+        // 节点缺席 /proxies 表时以 overlay 的组测速结果兜底
+        if (!node) return delayOverlay[name] !== undefined
+        return node.alive && node.history.length > 0
       }).length
       rows.push({
         name: item.name,
@@ -178,12 +183,16 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
       return target.all.map((name) => {
         const node = proxies[name]
         if (!node) {
+          // 节点缺席 /proxies 表（mihomo v1.19.25+ 回归）：组端点测速的
+          // 结果经 overlay 兜底，避免永远显示 ---
+          const overlayDelay = delayOverlay[name]
+          const result = classifyDelayValue(overlayDelay, config.delayThresholds)
           return {
             name,
             type: '?',
             provider: '',
-            status: 'untested' as NodeStatus,
-            delay: undefined,
+            status: result.status,
+            delay: result.delay,
             current: name === localCurrent || name === globalCurrent,
             testing: testing.has(name),
           }
@@ -200,7 +209,7 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
         }
       })
     },
-    [proxies, config.testUrl, config.delayThresholds, testing, resolveRealNode],
+    [proxies, config.testUrl, config.delayThresholds, testing, delayOverlay, resolveRealNode],
   )
 
   const select = useCallback(
@@ -245,54 +254,61 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
       if (nodes.length === 0) return
 
       setTestingGroup(group)
-      setProgress({ done: 0, total: nodes.length })
       setTesting(new Set(nodes))
 
-      let done = 0
-      // 限制并发，避免几百个节点同时测速把内核压垮
-      const CONCURRENCY = 8
-      const queue = [...nodes]
-      const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-        while (queue.length > 0) {
-          const name = queue.shift()
-          if (!name) break
-          try {
-            await client.testProxyDelay(name)
-          } catch {
-            // 业务错误 = 节点不可用，是正常结果，不打断整组测速
-          }
-          done += 1
-          if (!mounted.current) return
-          setProgress({ done, total: nodes.length })
-          setTesting((prev) => {
-            const next = new Set(prev)
-            next.delete(name)
-            return next
-          })
-          // 每个节点测完就刷新，实现结果流式回填
+      try {
+        // 单次调用组端点：内核并发测全组并返回 {节点名: 延迟}。
+        // 相比逐节点并发：请求数从 N 降到 1，且不依赖 /proxies 表里有
+        // 节点实体（mihomo v1.19.25+ 回归会让 provider 节点缺席该表）
+        const results = await client.testGroupDelay(group)
+        if (!mounted.current) return
+        setDelayOverlay((prev) => ({ ...prev, ...results }))
+      } catch {
+        // 业务错误 = 组内节点整体不可用，属正常结果，不当成程序错误
+      } finally {
+        if (mounted.current) {
+          setTestingGroup(undefined)
+          setTesting(new Set())
           void load()
         }
-      })
-      await Promise.all(workers)
-      if (!mounted.current) return
-      setTestingGroup(undefined)
-      setProgress(undefined)
-      setTesting(new Set())
-      await load()
+      }
     },
-    [proxies, isGroup, client, load],
+    [proxies, isGroup, client],
   )
 
   const testNode = useCallback(
-    async (name: string) => {
+    async (name: string): Promise<string | undefined> => {
       setTesting((prev) => new Set(prev).add(name))
       try {
         await client.testProxyDelay(name)
+        return undefined
       } catch (err) {
-        // 延迟测试失败属于「节点不可用」，不当作程序错误上报
-        if (!(err instanceof ApiBusinessError)) {
-          setError(err instanceof Error ? err.message : String(err))
+        // 404 = 节点名未注册进内核查询表：可能是订阅更新后节点名变化，
+        // 也可能是 mihomo v1.19.25+ 的 provider 节点注册回归——回退到
+        // 组端点测速（其结果经 overlay 兜底显示），并给用户明确提示
+        if (err instanceof HttpStatusError && err.status === 404) {
+          const containingGroup = Object.entries(proxies).find(
+            ([, p]) => Array.isArray(p.all) && (p.all as string[]).includes(name),
+          )?.[0]
+          if (containingGroup) {
+            try {
+              const results = await client.testGroupDelay(containingGroup)
+              if (!mounted.current) return undefined
+              setDelayOverlay((prev) => ({ ...prev, ...results }))
+              return '该节点未注册（订阅更新后节点名变化或内核版本兼容性），已改用组测速'
+            } catch {
+              return '节点已失效（订阅更新后节点名可能变化），按 r 刷新后重试'
+            }
+          }
+          return '节点已失效（订阅更新后节点名可能变化），按 r 刷新后重试'
         }
+        // 其余延迟测试失败属于「节点不可用」，是正常结果，不当成程序错误
+        if (!(err instanceof ApiBusinessError)) {
+          const message = err instanceof Error ? err.message : String(err)
+          setError(message)
+          return message
+        }
+        return undefined
       } finally {
         if (mounted.current) {
           setTesting((prev) => {
@@ -304,7 +320,7 @@ export function useProxies(config: AppConfig, refreshMs = 5000): UseProxiesResul
         }
       }
     },
-    [client, load],
+    [proxies, client, load],
   )
 
   // 计算全局当前节点：PROXY → AUTO → 具体节点
