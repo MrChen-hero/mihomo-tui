@@ -35,6 +35,19 @@ export class ServiceManager {
     }
   }
 
+  /** 启动服务（proxy on --start 用）。失败抛错并携带完整 stderr。 */
+  async start(): Promise<void> {
+    try {
+      await execFileAsync(
+        this.systemctlBin,
+        ['--user', 'start', this.serviceName],
+        { timeout: SYSTEMCTL_TIMEOUT_MS },
+      )
+    } catch (err) {
+      throw new Error(`启动 ${this.serviceName} 服务失败：${describe(err)}`)
+    }
+  }
+
   /** 重启服务。失败抛错并携带完整 stderr，供上层回滚后展示。 */
   async restart(): Promise<void> {
     try {

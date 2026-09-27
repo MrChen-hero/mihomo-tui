@@ -8,6 +8,7 @@ import { MihomoClient } from './api/client.js'
 import { loadConfig } from './config.js'
 import { runStatus } from './commands/status.js'
 import { runProxyLs, runProxyTest, runProxyUnfix, runProxyUse } from './commands/proxy.js'
+import { runProxyInit, runProxyOff, runProxyOn, runProxyStatus } from './commands/proxyEnv.js'
 import { runProviderCheck, runProviderLs, runProviderUpdate } from './commands/provider.js'
 import { runConnClose, runConnLs, runReload } from './commands/conn.js'
 import { runLogs } from './commands/logs.js'
@@ -59,7 +60,37 @@ program
   .option('--json', '输出原始 JSON')
   .action(wrap(async (options: { json?: boolean }) => runStatus(resolveConfig(), options)))
 
-const proxy = program.command('proxy').description('代理组与节点操作')
+const proxy = program.command('proxy').description('代理组与节点操作；on/off 切换本 shell 的系统代理环境变量')
+
+proxy
+  .command('on')
+  .description('开启系统代理：输出 export 代码（eval 执行），把本 shell 流量指向本机 mihomo 混合端口')
+  .option('--json', '输出原始 JSON（含端口与 script）')
+  .option('--port <n>', '显式指定混合端口，默认按「内核 /configs → config.yaml」发现')
+  .option('--lan', 'no_proxy 追加私有网段（旧版 curl/wget 不识别 CIDR，默认关闭）')
+  .option('--all', '同时设置 all_proxy（部分工具按 socks 语义解释，默认不设）')
+  .option('--start', '内核离线时先拉起 systemd 用户服务')
+  .action(wrap(async (options: { json?: boolean; port?: string; lan?: boolean; all?: boolean; start?: boolean }) =>
+    runProxyOn(resolveConfig(), options),
+  ))
+
+proxy
+  .command('off')
+  .description('关闭系统代理：输出 unset 代码（eval 执行）；不访问内核，离线可用')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) => runProxyOff(resolveConfig(), options)))
+
+proxy
+  .command('status')
+  .description('查看内核 mixed-port 与本 shell 代理环境变量的一致性')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) => runProxyStatus(resolveConfig(), options)))
+
+proxy
+  .command('init')
+  .description('输出 shell 集成函数（proxy / proxy-on / proxy-off / proxy-tui）')
+  .option('--json', '输出原始 JSON')
+  .action(wrap(async (options: { json?: boolean }) => runProxyInit(resolveConfig(), options)))
 
 proxy
   .command('ls')
