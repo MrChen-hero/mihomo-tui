@@ -4,6 +4,7 @@ package-lock.json
 
 # 构建输出
 dist/
+dist-bin/
 
 # 日志
 *.log

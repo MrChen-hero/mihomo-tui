@@ -34,7 +34,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "bundle": "node scripts/build-binary.mjs --target linux-x64",
+    "bundle:all": "node scripts/build-binary.mjs --target all",
+    "bundle:darwin": "node scripts/build-binary.mjs --target darwin-arm64",
+    "bundle:windows": "node scripts/build-binary.mjs --target windows-x64"
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",

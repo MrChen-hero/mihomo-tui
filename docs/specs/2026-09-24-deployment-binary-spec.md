@@ -138,7 +138,7 @@
 
 **构建期发现（三条，均已解决）**：
 
-1. **ink 的 DEV 分支引用 `react-devtools-core`**（npm 生产安装不含此包）。`--external` 无效（编译产物运行时解析失败）；`--define process.env.DEV` 也无效（动态 import 仍进模块图）。**解法：Bun.build 插件在构建期把 `react-devtools-core` 替换为空实现**（编译产物永不进 DEV 模式），由 Checkpoint 4 的 `scripts/build-binary.mjs` 内置该插件。
+1. **ink 的 DEV 分支引用 `react-devtools-core`**（npm 生产安装不含此包）。`--external` 无效（编译产物运行时解析失败）；`--define process.env.DEV` 也无效（动态 import 仍进模块图）。**解法：构建期在 node_modules 写入空实现 stub 包让裸 specifier 解析落地**（编译产物永不进 DEV 模式；stub 由 Checkpoint 4 的 `scripts/build-binary.mjs` 幂等生成，npm ci 自动清除）。
 2. **`--target bun` 必须显式指定**：缺省按 browser 目标解析，连 `require('module')` 都拒绝。
 3. **代码库大小写碰撞**：`src/components/textEditor.ts`（逻辑）与 `TextEditor.tsx`（视图）仅大小写之差，bun 的解析器会把两者错配（tsc/tsx 无此问题）；这同时也是 macOS 大小写不敏感文件系统上的 checkout 隐患。已将逻辑文件改名 `textEditorModel.ts`。
 
