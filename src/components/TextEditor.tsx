@@ -23,7 +23,7 @@ import {
   visibleLines,
   type EditorAction,
   type EditorState,
-} from './textEditor.js'
+} from './textEditorModel.js'
 
 export interface TextEditorProps {
   title: string

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fromText, reduce, scrollToCursor, toText, visibleLines } from '../textEditor.js'
+import { fromText, reduce, scrollToCursor, toText, visibleLines } from '../textEditorModel.js'
 
 const doc = (text: string) => fromText(text)
 
