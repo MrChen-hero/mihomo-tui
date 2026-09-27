@@ -16,7 +16,7 @@
 - 移除暂缓的代理链编辑死代码（`src/relay/`、`RelayEditor`）：内核 v1.19.24 已移除 `type: relay`，待按 `dialer-proxy` 重新设计后再实现。
 - 新增 shell 代理开关 `proxy on / off / status / init`：emit-eval 模式输出 shell 代码由父 shell eval 执行，端口按「`--port` → 内核 `/configs` → config.yaml」链发现；`proxy init` 一行集成提供 `proxy` / `proxy-on` / `proxy-off` / `proxy-tui` 快捷命令。
 - 新增单二进制打包 `scripts/build-binary.mjs`：bun 1.4.2 交叉编译 Linux/macOS/Windows 五平台产物 + SHA256 checksums + 本机产物自动冒烟；版本号经 `src/version.ts` 来源链构建期注入（编译产物不再读 package.json）。
-- 新增 npm 发布通道 `@mrchen-hero/mihomo-tui`（裸名 mihomo-tui 已被第三方占用）与 `release.yml` 双通道发布：tag↔version 一致性守卫、三平台冒烟矩阵、预发布版本走 dist-tag `next`、`NPM_TOKEN` 未配置时发布步骤自动跳过。
+- 新增 npm 发布通道 `@morndream/mihomo-tui`（裸名 mihomo-tui 已被第三方占用）与 `release.yml` 双通道发布：tag↔version 一致性守卫、三平台冒烟矩阵、预发布版本走 dist-tag `next`、`NPM_TOKEN` 未配置时发布步骤自动跳过。
 
 ## [0.4.0] - 2026-09-25
 

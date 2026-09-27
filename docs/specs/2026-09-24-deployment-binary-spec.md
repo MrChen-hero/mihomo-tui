@@ -5,7 +5,7 @@
 - **上游依据**：`docs/ROADMAP.md` §v0.5.0、`docs/DEVELOPMENT.md`、`package.json`、`bin/mihomo-tui`、`.github/workflows/ci.yml`
 - **状态**：草稿（待评审）
 - **修订**：2026-09-27 增补 §6「Shell 代理开关集成」（`proxy on/off/status/init`），Checkpoint、测试、风险与验证方案同步扩充
-- **修订 2**：2026-09-27 将「npm registry 发布」从非目标移入范围——scoped 包 `@mrchen-hero/mihomo-tui`（裸名已被抢注）、package.json 发布化改造与 release.yml publish job（§7.3、§9）
+- **修订 2**：2026-09-27 将「npm registry 发布」从非目标移入范围——scoped 包 `@morndream/mihomo-tui`（裸名已被抢注）、package.json 发布化改造与 release.yml publish job（§7.3、§9）
 
 ---
 
@@ -38,7 +38,7 @@
 4. 新增 GitHub Actions `release.yml`，push `v*` tag 时自动出产物并挂到 GitHub Release
 5. 保持现有 `tsc` + `bin/mihomo-tui` Node 分发路径不变（**双轨分发**）
 6. 内置 shell 代理开关 `proxy on / off / status / init`：把作者 bashrc 私有的 `proxy-on` / `proxy-off` / `proxy-tui` 收纳为安装即用的正式能力（详见 §6）
-7. npm registry 正式发布（scoped 包 `@mrchen-hero/mihomo-tui`），与 GitHub Release 二进制构成双发布通道；`npm install -g @mrchen-hero/mihomo-tui@latest` 安装即用（详见 §7.3）
+7. npm registry 正式发布（scoped 包 `@morndream/mihomo-tui`），与 GitHub Release 二进制构成双发布通道；`npm install -g @morndream/mihomo-tui@latest` 安装即用（详见 §7.3）
 
 ---
 
@@ -51,7 +51,7 @@
 - 版本号统一从 `package.json` 读取（现有 `src/cli.tsx` 已如此）
 - 产物 SHA256 checksums (`checksums.txt`)
 - **Shell 代理开关**：`proxy on|off|status` 子命令（emit-eval 模式，详见 §6）与 `proxy init` shell 集成输出（`proxy`、`proxy on/off/status` 及 `proxy-on/proxy-off/proxy-tui` 兼容别名）
-- **npm 发布化改造**：`package.json` 移除 `private`、新增 `files` 白名单与 `prepublishOnly` 门禁、定稿 scoped 包名 `@mrchen-hero/mihomo-tui`（详见 §7.3）
+- **npm 发布化改造**：`package.json` 移除 `private`、新增 `files` 白名单与 `prepublishOnly` 门禁、定稿 scoped 包名 `@morndream/mihomo-tui`（详见 §7.3）
 - **release.yml 增加 publish job**：与二进制产物同 tag 触发，`NPM_TOKEN`（granular）+ `--access public`
 - **git 直装过渡**：`prepare` 构建脚本，使 `npm install -g github:MrChen-hero/mihomo-tui#main` 在 registry 发布前即可用
 - 安装说明（README 增附录，含 shell 集成一行安装；不单独写安装脚本——本版本不提供 `install.sh`）
@@ -282,14 +282,14 @@ node scripts/build-binary.mjs \
 
 ```json
 {
-  "name": "@mrchen-hero/mihomo-tui",
+  "name": "@morndream/mihomo-tui",
   "files": ["dist", "bin", "README.md", "LICENSE", "CHANGELOG.md"],
   "prepublishOnly": "npm run typecheck && npm test && npm run build",
   "prepare": "npm run build"
 }
 ```
 
-- **包名定稿**：裸名 `mihomo-tui` 已于 2026-06 被第三方抢注（alias 包），scoped 名 `@mrchen-hero/mihomo-tui` 经 registry 实测未占用、与 GitHub 用户名一致；`npm install -g @mrchen-hero/mihomo-tui@latest` 等价可用
+- **包名定稿**：裸名 `mihomo-tui` 已于 2026-06 被第三方抢注（alias 包），scoped 名 `@morndream/mihomo-tui` 经 registry 实测未占用、与 npm 发布账号一致（2026-09-27 定稿；scope 跟随 npm 账号 `morndream`，与 GitHub 用户名无关）；`npm install -g @morndream/mihomo-tui@latest` 等价可用
 - **`files` 白名单是必须项**：只发 `dist/` + `bin/` + 文档，`node_modules` 自动排除；tsx 属 devDependency 不随全局安装，bin 胶水的 tsx 回退在用户机不可达——**`dist/` 必须随包发布**，胶水脚本命中 dist 分支
 - **`prepare` 与 `prepublishOnly` 分工**：`prepare` 服务 git 直装（`npm install -g github:MrChen-hero/mihomo-tui#main`，registry 发布前的过渡通道）；`prepublishOnly` 服务 registry 发布的三重门禁（typecheck + 全量测试 + build）。注意 `prepare` 在本地 `npm install` 时也会触发一次 build——可接受，CI 中 `npm install` 顺带产出 `dist/` 与后续步骤复用（仓库不提交 package-lock.json，`npm ci` 不可用）。
 - **发布纪律**：git tag（`v*`）↔ `package.json` version ↔ CHANGELOG 三者一致才允许 publish；scoped 包首发必须 `npm publish --access public`
@@ -484,7 +484,7 @@ jobs:
 | Windows 上 `--version` 输出 UTF-8 中文乱码 | 中 | 低 | 冒烟脚本设 ` LANG=C.UTF-8`；若仍乱码，README 加 `chcp 65001` 说明 |
 | Deno 兜底路径维护成本 | 低 | 中 | **约定：Deno 路径仅在 Bun blocker 出现时启用；未启用时 `--runtime deno` 打印 `未启用` 报错**，不留半成品代码 |
 | 用户 rc 中已有同名 `proxy` / `proxy-on` 函数 | 低 | 低 | init 输出带来源注释；`proxy status` 报告生效端口与来源；README 说明集成行应追加在旧别名之后以覆盖 |
-| 包名混淆：裸名 `mihomo-tui` 已被他人占用 | 中 | 中 | 全部文档统一 scoped 名 `@mrchen-hero/mihomo-tui`；package.json 的 homepage/repository/description 指回本仓库；README 发布章节明示裸名包与本工具无关 |
+| 包名混淆：裸名 `mihomo-tui` 已被他人占用 | 中 | 中 | 全部文档统一 scoped 名 `@morndream/mihomo-tui`；package.json 的 homepage/repository/description 指回本仓库；README 发布章节明示裸名包与本工具无关 |
 | 发布凭证泄露 | 低 | 高 | `NPM_TOKEN` 使用 granular token（仅本包 publish 权限），仅存 GitHub Secrets；泄露即吊销轮换 |
 
 ---
@@ -507,7 +507,7 @@ jobs:
 6. **CI `release.yml` 草稿合并到 main**（先 `workflow_dispatch` 触发灰度）
 7. **npm 发布通道**：package.json 发布化改造完成、`npm pack --dry-run` 内容校验通过、release.yml publish job 灰度；registry 首发用 `--access public`
 8. **打 `v0.5.0-rc.0` tag，验证 end-to-end release**：5 个产物 attach 成功、3 平台 smoke-matrix 全绿、npm 包同步发布可安装
-9. **README 安装章节更新（含 `proxy` 一行集成与 on/off 用法、`npm install -g @mrchen-hero/mihomo-tui` 安装说明）** + ROADMAP v0.5.0 勾选完成
+9. **README 安装章节更新（含 `proxy` 一行集成与 on/off 用法、`npm install -g @morndream/mihomo-tui` 安装说明）** + ROADMAP v0.5.0 勾选完成
 
 ---
 
@@ -556,7 +556,7 @@ jobs:
 
 实施过程中确认无法在本阶段闭环的事项记录于此，按阶段追加；闭环后勾选。
 
-- [ ] **npm 发布前置（用户操作）**：注册 npm 账号并配置 GitHub Secrets `NPM_TOKEN`（granular token，仅 `@mrchen-hero/mihomo-tui` 的 publish 权限）；publish job 在 token 就绪前以跳过状态存在
+- [ ] **npm 发布前置（用户操作）**：注册 npm 账号并配置 GitHub Secrets `NPM_TOKEN`（granular token，仅 `@morndream/mihomo-tui` 的 publish 权限）；publish job 在 token 就绪前以跳过状态存在
 - [ ] **端到端 release 验证（用户操作）**：push `v0.5.0-rc.0` tag 触发 release.yml 全链路（5 产物 attach、3 平台 smoke-matrix、npm 同步发布）
 - [ ] **真机手测（R6/R7）**：macOS Apple Silicon 与 Windows 各跑一次 TUI 进出与 `--version` / `status --json`
 - [ ] **版本发布节奏**：rc tag 前把 `package.json` version bump 为与 tag 一致（如 `v0.5.0-rc.0` ↔ `0.5.0-rc.0`，build job 守卫强制），CHANGELOG 建立对应版本节；正式 `v0.5.0` 时去掉 prerelease 标记

@@ -94,7 +94,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     env:
-      # granular token（仅 @mrchen-hero/mihomo-tui 的 publish 权限）；未配置时
+      # granular token（仅 @morndream/mihomo-tui 的 publish 权限）；未配置时
       # 本 job 照常通过、publish 步骤跳过——token 就绪前发布链路保持绿
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:

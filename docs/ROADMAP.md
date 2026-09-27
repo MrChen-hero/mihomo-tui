@@ -102,7 +102,7 @@ TUI 内查看生效规则、临时启停规则及更新规则集。
 - [x] 编写打包脚本（`scripts/build-binary.mjs`，五平台交叉编译 + checksums + 本机冒烟）
 - [ ] 在 CI 中自动构建 Linux/macOS/Windows 二进制（release.yml 已就绪，待 `v0.5.0-rc.0` tag 端到端验证）
 - [x] 更新文档与安装指南（README 安装三通道 + shell 集成）
-- [x] shell 代理开关 `proxy on/off/status/init`（emit-eval 模式）与 npm 发布通道 `@mrchen-hero/mihomo-tui`（发布待 NPM_TOKEN）
+- [x] shell 代理开关 `proxy on/off/status/init`（emit-eval 模式）与 npm 发布通道 `@morndream/mihomo-tui`（发布待 NPM_TOKEN）
 
 **预期收益**：
 - 部署只需下载单个可执行文件

@@ -80,7 +80,7 @@ REST API 完成 —— **运行时代码绝不写 `config.yaml`**。
 **方式一：npm 全局安装（需 Node.js ≥ 22）**
 
 ```bash
-npm install -g @mrchen-hero/mihomo-tui@latest
+npm install -g @morndream/mihomo-tui@latest
 ```
 
 **方式二：单二进制下载（免 Node.js）**
