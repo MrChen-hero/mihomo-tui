@@ -1,10 +1,13 @@
 /** CLI 输出与错误处理的公共部分：统一表格排版、脱敏、退出码。 */
+import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import {
   ApiBusinessError,
   HttpStatusError,
   KernelUnreachableError,
 } from '../api/client.js'
 import { CONFIG_PATH } from '../config.js'
+import { MIHOMO_BIN_DEFAULT } from '../config/manager.js'
 import { InvalidTargetError } from '../rules/matcher.js'
 
 /** 退出码约定：0 成功，1 通用错误，2 参数错误，3 内核不可达 */
@@ -155,6 +158,39 @@ export async function exitAfterFlush(code: number): Promise<never> {
   process.exit(code)
 }
 
+/** 常见安装位置之外的探测交给 `mihomo -v`（PATH 解析，含 Windows PATHEXT） */
+const KNOWN_BIN_PATHS = ['/usr/local/bin/mihomo', '/usr/bin/mihomo']
+
+/**
+ * 内核不可达时按机器实际状态给引导，而不是写死 systemd 排查命令：
+ * - service：systemctl --user 存在 mihomo 单元 → 查服务状态（既有部署场景）
+ * - binary ：PATH 或常见路径上有 mihomo 二进制 → 已装未启动 / 控制口配置不匹配
+ * - none   ：全新机器 → 给出 kernel install 的自助闭环命令
+ * 所有探测带超时且失败静默降级，报错路径的额外延迟可忽略。
+ */
+export type KernelEnvState = 'service' | 'binary' | 'none'
+export type KernelEnvProbe = () => KernelEnvState
+
+export function probeKernelEnv(): KernelEnvState {
+  const unit = spawnSync('systemctl', ['--user', 'cat', 'mihomo'], { timeout: 2000 })
+  if (!unit.error && unit.status === 0) return 'service'
+  const binary = spawnSync('mihomo', ['-v'], { timeout: 1500 })
+  if (!binary.error && binary.status === 0) return 'binary'
+  if (existsSync(MIHOMO_BIN_DEFAULT) || KNOWN_BIN_PATHS.some((p) => existsSync(p))) return 'binary'
+  return 'none'
+}
+
+export function describeKernelHint(probe: KernelEnvProbe = probeKernelEnv): string {
+  switch (probe()) {
+    case 'service':
+      return '内核可能未运行，请排查：systemctl --user status mihomo'
+    case 'binary':
+      return '检测到已安装的 mihomo 内核但控制口不可达：确认内核进程已启动，且 external-controller 指向控制口地址'
+    case 'none':
+      return '未检测到 mihomo 内核。运行 mihomo-tui kernel install 自动下载安装内核与最小配置；详见 README《第一次使用》'
+  }
+}
+
 /**
  * 把异常翻译成一行人话 + 退出码。
  * 业务错误（如延迟测试失败）由调用方自行处理，不该走到这里。
@@ -166,7 +202,7 @@ export function reportError(err: unknown): never {
   }
   if (err instanceof KernelUnreachableError) {
     process.stderr.write(`错误：${err.message}\n`)
-    process.stderr.write('内核可能未运行，请排查：systemctl --user status mihomo\n')
+    process.stderr.write(`${describeKernelHint()}\n`)
     process.exit(EXIT.unreachable)
   }
   if (err instanceof HttpStatusError) {

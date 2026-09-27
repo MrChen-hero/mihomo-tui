@@ -113,10 +113,12 @@ function merge(raw: unknown): AppConfig {
  * 安装期提示不可靠，改在首次运行的确定性时机给出；仅交互终端输出，
  * 管道与 --json 消费者看到的是干净的 stderr。
  */
-function printFirstRunHint(): void {
+/** 导出仅为测试：内容断言需要直接调用，绕开 CONFIG_PATH 的真实首装守卫 */
+export function printFirstRunHint(): void {
   if (!process.stderr.isTTY) return
   process.stderr.write(
     '提示：已生成初始配置 ~/.config/mihomo-tui/config.json\n' +
+      '还没有 mihomo 内核？运行：mihomo-tui kernel install（自动下载安装内核与最小配置）\n' +
       '要用 proxy on / off 管理本 shell 的系统代理？先执行：eval "$(mihomo-tui proxy init)"\n',
   )
 }

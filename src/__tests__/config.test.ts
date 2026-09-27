@@ -4,8 +4,8 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG, loadConfig, saveConfig } from '../config.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_CONFIG, loadConfig, printFirstRunHint, saveConfig } from '../config.js'
 
 function tempFile(content?: string): string {
   const dir = mkdtemp()
@@ -114,5 +114,44 @@ describe('downloadSource 与 mihomoBin（设置页新字段）', () => {
     saveConfig({ ...DEFAULT_CONFIG, downloadSource: { mode: 'gh-proxy.com' } }, path)
     expect(loadConfig(path).downloadSource).toEqual({ mode: 'gh-proxy.com' })
     expect(existsSync(`${path}.tmp`)).toBe(false)
+  })
+})
+
+describe('printFirstRunHint 首装提示', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  /** 管道 stderr 上 isTTY 是 undefined（无 accessor），只能 defineProperty 直改 */
+  function withStderrIsTTY(value: boolean | undefined, fn: () => void): void {
+    const original = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY')
+    Object.defineProperty(process.stderr, 'isTTY', { value, configurable: true, writable: true })
+    try {
+      fn()
+    } finally {
+      if (original) Object.defineProperty(process.stderr, 'isTTY', original)
+      else delete (process.stderr as { isTTY?: boolean }).isTTY
+    }
+  }
+
+  it('TTY 首次生成配置时给出 kernel install 自助命令', () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    let out = ''
+    try {
+      withStderrIsTTY(true, () => printFirstRunHint())
+      // restore 会清空调用记录，必须在 restore 前取值
+      out = write.mock.calls.map((call) => String(call[0])).join('')
+    } finally {
+      write.mockRestore()
+    }
+    expect(out).toContain('mihomo-tui kernel install')
+  })
+
+  it('非 TTY（管道/--json 消费）保持 stderr 干净', () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      withStderrIsTTY(undefined, () => printFirstRunHint())
+    } finally {
+      write.mockRestore()
+    }
+    expect(write).not.toHaveBeenCalled()
   })
 })

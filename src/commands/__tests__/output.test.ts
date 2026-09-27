@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EXIT,
+  describeKernelHint,
   displayWidth,
   exitAfterFlush,
   fitDisplay,
@@ -226,6 +227,20 @@ function stubStdout(backlog: number, invokeCallback: boolean): { writeSpy: Retur
     }) as never)
   return { writeSpy }
 }
+
+describe('describeKernelHint 内核不可达引导', () => {
+  it('service：systemd 单元存在 → 指向服务排查', () => {
+    expect(describeKernelHint(() => 'service')).toContain('systemctl --user status mihomo')
+  })
+
+  it('binary：已装未启动 → 指出启动与控制口配置', () => {
+    expect(describeKernelHint(() => 'binary')).toContain('已安装')
+  })
+
+  it('none：全新机器 → 给出 kernel install 自助闭环命令', () => {
+    expect(describeKernelHint(() => 'none')).toContain('mihomo-tui kernel install')
+  })
+})
 
 describe('exitAfterFlush 冲净后退出', () => {
   afterEach(() => {
