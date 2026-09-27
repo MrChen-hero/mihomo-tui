@@ -77,35 +77,57 @@ REST API 完成 —— **运行时代码绝不写 `config.yaml`**。
 
 ## 安装
 
-从源码安装：
+**方式一：npm 全局安装（需 Node.js ≥ 22）**
+
+```bash
+npm install -g @mrchen-hero/mihomo-tui@latest
+```
+
+**方式二：单二进制下载（免 Node.js）**
+
+从 [GitHub Releases](https://github.com/MrChen-hero/mihomo-tui/releases) 下载对应平台产物
+（Linux / macOS / Windows，x64 与 arm64，约 60–100 MB），并用同目录的 `checksums.txt` 校验：
+
+```bash
+sha256sum -c checksums.txt
+chmod +x mihomo-tui-*-linux-x64
+```
+
+macOS 首次运行如被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mihomo-tui-*`。
+
+**方式三：源码安装**
 
 ```bash
 git clone https://github.com/MrChen-hero/mihomo-tui.git
 cd mihomo-tui
-npm install
-npm run build
+npm install && npm run build
 ```
 
-建议在 `~/.bashrc` 中加一个入口函数（路径按实际克隆位置调整）：
+**Shell 集成（推荐）**：一行装进 `~/.bashrc`，获得 `proxy` / `proxy-on` / `proxy-off` /
+`proxy-tui` 快捷命令：
 
 ```bash
-proxy_tui() {
-    local bin="$HOME/mihomo-tui/bin/mihomo-tui"
-    if [ ! -x "$bin" ]; then
-        echo "mihomo-tui not found or not executable: $bin" >&2
-        return 1
-    fi
-    "$bin" "$@"
-}
+echo 'eval "$(mihomo-tui proxy init)"' >> ~/.bashrc && source ~/.bashrc
 ```
 
-新开终端（或 `source ~/.bashrc`）后即可使用 `proxy_tui` 命令。
+之后日常操作只需：
+
+```bash
+proxy on        # 本 shell 开启系统代理（自动发现内核混合端口）
+proxy off       # 关闭系统代理
+proxy status    # 查看内核端口与本 shell 代理状态
+proxy           # 进入 TUI
+```
+
+说明：`proxy on` 的本质是 CLI 算好端口后输出 shell 代码、由 shell `eval` 执行
+（子进程改不了父 shell 的环境变量）。不装集成也可直接 `eval "$(mihomo-tui proxy on)"`；
+终端直跑 `mihomo-tui proxy on` 时 stderr 会提示这一用法。
 
 ## 快速开始
 
 ```bash
-proxy_tui status    # 先确认能连上内核：打印版本、模式、端口、provider 概览
-proxy_tui           # 无参数进入 TUI
+mihomo-tui status    # 先确认能连上内核：打印版本、模式、端口、provider 概览
+mihomo-tui           # 无参数进入 TUI
 ```
 
 ## TUI 使用
@@ -130,7 +152,7 @@ proxy_tui           # 无参数进入 TUI
 | `m` | 切换模式（规则 → 全局 → 直连 → 规则） |
 | `r` | 刷新 |
 
-解除 url-test / fallback 组的钉选请使用 CLI：`proxy_tui proxy unfix <组名>`。
+解除 url-test / fallback 组的钉选请使用 CLI：`mihomo-tui proxy unfix <组名>`。
 
 节点状态五分显示——`lazy: true` 的组在被使用前所有节点的 `history` 都是空的，
 所以「未测试」与「不可用」严格区分：
@@ -224,30 +246,33 @@ proxy_tui           # 无参数进入 TUI
 每条命令输出一行或一张表，均支持 `--json` 供 `jq` 消费。
 
 ```bash
-proxy_tui status                        # 内核版本、模式、端口、provider 概览
-proxy_tui proxy ls                      # 列出所有代理组及当前选中
-proxy_tui proxy ls 香港                  # 列出该组节点、延迟、状态
-proxy_tui proxy use <组> <节点>          # 切换节点（url-test 组会钉选并提示）
-proxy_tui proxy unfix <组>              # 解除 url-test/fallback 组的钉选
-proxy_tui proxy test 香港 -u <url> -t 5000   # 整组延迟测试，可自定义测速地址与超时
-proxy_tui provider ls                   # 订阅列表（节点数/流量/到期/更新时间）
-proxy_tui provider update [名称]        # 更新订阅，省略名称则全部
-proxy_tui provider check <名称>         # 触发健康检查
-proxy_tui rules ls --type DOMAIN-SUFFIX --json  # 规则类型同时接受 DomainSuffix
-proxy_tui rules test example.com --json        # hit / miss / unsupported
-proxy_tui rule-provider ls --json              # 规则集列表
-proxy_tui rule-provider update <名称> --json    # 更新规则集
-proxy_tui logs -f                       # 实时日志跟随，Ctrl+C 退出
-proxy_tui logs -n 20 -g 'error'         # 抓 20 条含 error 的日志后退出
-proxy_tui conn ls -s traffic -n 50      # 连接列表，按流量排序
-proxy_tui conn close <id|--all>         # 关闭连接（id 支持 8 位前缀）
-proxy_tui reload                        # 热重载配置（内核不重启）
+mihomo-tui status                        # 内核版本、模式、端口、provider 概览
+mihomo-tui proxy on                      # 本 shell 开启系统代理（输出 shell 代码，eval 执行）
+mihomo-tui proxy off                     # 关闭系统代理；不访问内核，离线可用
+mihomo-tui proxy status                  # 内核端口与本 shell 代理状态（--json 可查）
+mihomo-tui proxy ls                      # 列出所有代理组及当前选中
+mihomo-tui proxy ls 香港                  # 列出该组节点、延迟、状态
+mihomo-tui proxy use <组> <节点>          # 切换节点（url-test 组会钉选并提示）
+mihomo-tui proxy unfix <组>              # 解除 url-test/fallback 组的钉选
+mihomo-tui proxy test 香港 -u <url> -t 5000   # 整组延迟测试，可自定义测速地址与超时
+mihomo-tui provider ls                   # 订阅列表（节点数/流量/到期/更新时间）
+mihomo-tui provider update [名称]        # 更新订阅，省略名称则全部
+mihomo-tui provider check <名称>         # 触发健康检查
+mihomo-tui rules ls --type DOMAIN-SUFFIX --json  # 规则类型同时接受 DomainSuffix
+mihomo-tui rules test example.com --json        # hit / miss / unsupported
+mihomo-tui rule-provider ls --json              # 规则集列表
+mihomo-tui rule-provider update <名称> --json    # 更新规则集
+mihomo-tui logs -f                       # 实时日志跟随，Ctrl+C 退出
+mihomo-tui logs -n 20 -g 'error'         # 抓 20 条含 error 的日志后退出
+mihomo-tui conn ls -s traffic -n 50      # 连接列表，按流量排序
+mihomo-tui conn close <id|--all>         # 关闭连接（id 支持 8 位前缀）
+mihomo-tui reload                        # 热重载配置（内核不重启）
 ```
 
 组名含中文与 emoji 时正常传入即可，程序全程 `encodeURIComponent`：
 
 ```bash
-proxy_tui proxy ls '🇭🇰 香港聚合'
+mihomo-tui proxy ls '🇭🇰 香港聚合'
 ```
 
 **退出码约定**：`0` 成功，`1` 通用错误，`2` 参数错误，`3` 内核不可达。
@@ -350,7 +375,7 @@ mihomo 内核不回应 WebSocket close 帧，客户端关闭握手永不完成�
 
 **Q：TUI 里的修改重启内核后会丢吗？**
 会。运行时操作（切节点、切模式）都是内存中变更。需要持久化的变更请编辑
-`config.yaml` 后执行 `proxy_tui reload`；订阅的增删改则直接持久化
+`config.yaml` 后执行 `mihomo-tui reload`；订阅的增删改则直接持久化
 （通过内置的备份 → 校验 → 原子写 → 回滚事务）。
 
 **Q：添加订阅时提示「订阅名称已存在」？**
@@ -422,7 +447,7 @@ src/
 - [x] v0.3.0 —— 订阅增强：分组、重命名、远程/本地类型、更新间隔、内联 YAML 编辑（前缀按订阅名自动派生）
 - [x] v0.4.0 —— 规则管理：规则页、规则集更新、保守规则测试、运行时禁用/降级标记
 - [ ] 后续 —— dialer-proxy 代理链设计；本机 mihomo v1.19.24 已移除 `type: relay`
-- [ ] v0.5.0 —— 单二进制打包（Bun/Deno）
+- [x] v0.5.0（实现就绪）—— 单二进制打包（Bun 1.4.2）、shell 代理开关（`proxy on/off`）、npm 双通道；发布待 `v0.5.0-rc.0` tag
 
 详细规划与技术债请参阅 [docs/ROADMAP.md](docs/ROADMAP.md)
 

@@ -97,11 +97,12 @@ TUI 内查看生效规则、临时启停规则及更新规则集。
 | **pkg** | 老牌 Node.js 打包工具 | 已停止维护，不支持 Node.js 22 | ⭐ |
 | **nexe** | 打包为单二进制 | 社区活跃度低，兼容性问题多 | ⭐⭐ |
 
-**实施步骤**：
-- [ ] 调研 Bun 与 Deno 对 Ink 的兼容性（Ink 依赖 React 与终端 API）
-- [ ] 编写打包脚本（`scripts/build-binary.sh`）
-- [ ] 在 CI 中自动构建 Linux/macOS/Windows 二进制
-- [ ] 更新文档与安装指南
+**实施步骤**（2026-09-27 实施完成，发布待 rc tag）：
+- [x] 调研 Bun 与 Deno 对 Ink 的兼容性（spike 实测 V1–V5 全过，锁定 bun@1.4.2，见 deployment-binary-spec §4.1）
+- [x] 编写打包脚本（`scripts/build-binary.mjs`，五平台交叉编译 + checksums + 本机冒烟）
+- [ ] 在 CI 中自动构建 Linux/macOS/Windows 二进制（release.yml 已就绪，待 `v0.5.0-rc.0` tag 端到端验证）
+- [x] 更新文档与安装指南（README 安装三通道 + shell 集成）
+- [x] shell 代理开关 `proxy on/off/status/init`（emit-eval 模式）与 npm 发布通道 `@mrchen-hero/mihomo-tui`（发布待 NPM_TOKEN）
 
 **预期收益**：
 - 部署只需下载单个可执行文件
