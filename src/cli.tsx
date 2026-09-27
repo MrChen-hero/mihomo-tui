@@ -4,7 +4,6 @@
  * 所有子命令共享同一份 ~/.config/mihomo-tui/config.json，并支持 --json。
  */
 import { Command, CommanderError } from 'commander'
-import { readFileSync } from 'node:fs'
 import { MihomoClient } from './api/client.js'
 import { loadConfig } from './config.js'
 import { runStatus } from './commands/status.js'
@@ -14,13 +13,7 @@ import { runConnClose, runConnLs, runReload } from './commands/conn.js'
 import { runLogs } from './commands/logs.js'
 import { runRuleProviderLs, runRuleProviderUpdate, runRulesLs, runRulesTest } from './commands/rules.js'
 import { EXIT, exitAfterFlush, reportError } from './commands/output.js'
-
-/** 版本号以 package.json 为唯一来源（编译后与源码模式都指向项目根） */
-const VERSION = (
-  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-    version: string
-  }
-).version
+import { VERSION } from './version.js'
 
 const program = new Command()
 

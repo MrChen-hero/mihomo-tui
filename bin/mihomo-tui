@@ -2,14 +2,22 @@
 // mihomo-tui 可执行入口。
 // 优先跑已编译的 dist/cli.js；未编译时回退到 tsx 直跑 TypeScript 源码（开发期）。
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const compiled = join(root, 'dist', 'cli.js')
+// 版本号读取失败或畸形不能拦住启动：src/version.ts 自有兜底链
+let pkgVersion
+try {
+  const parsed = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+  pkgVersion = typeof parsed.version === 'string' && parsed.version ? parsed.version : undefined
+} catch {}
 
 if (existsSync(compiled)) {
+  // 进程内加载前注入，cli 侧免读盘；bun 编译产物不走本文件（版本经 --define 注入）
+  globalThis.__MIHOMO_TUI_VERSION__ = pkgVersion
   await import(pathToFileURL(compiled).href)
 } else {
   const tsx = join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs')
@@ -19,6 +27,8 @@ if (existsSync(compiled)) {
   }
   const result = spawnSync(process.execPath, [tsx, join(root, 'src', 'cli.tsx'), ...process.argv.slice(2)], {
     stdio: 'inherit',
+    // 子进程拿不到 globalThis，版本号走环境变量通道
+    env: { ...process.env, MIHOMO_TUI_VERSION: pkgVersion },
   })
   process.exit(result.status ?? 1)
 }
