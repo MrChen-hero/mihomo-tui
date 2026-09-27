@@ -78,7 +78,7 @@
 
 | 方案 | 跨平台 cross-compile | Ink 7 / React 19 兼容 | 产物大小 | Node API 兼容 | 维护活跃度 | 总评 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Bun `bun build --compile`** | ✅ 官方支持 `--target=bun-linux-x64` 等 5 平台 | ⚠️ 历史有问题，2024Q4 起大幅改善（**需验证**） | ~55–80 MB | ✅ 高度兼容 Node API | 🟢 高（周更） | **推荐** |
+| **Bun `bun build --compile`** | ✅ 官方支持 `--target=bun-linux-x64` 等 5 平台 | ⚠️ 历史有问题，2024Q4 起大幅改善（**已实测通过，见 §4.1**） | ~55–80 MB（实测 80MB） | ✅ 高度兼容 Node API | 🟢 高（周更） | **推荐** |
 | **`deno compile`** | ✅ 5 平台 | ⚠️ Ink JSX + `--unstable-*` 多个 flag 才跑得动；`npm:ink` 需 node specifiers 全开（**需验证**） | ~90–120 MB | ⚠️ 通过 `npm:` specifier，部分 Node API 仍 stub | 🟢 高 | 备选 |
 | **`pkg` (Vercel)** | ❌ 不支持 Node 22 | — | — | — | 🔴 已停止维护 | 排除 |
 | **`nexe`** | ⚠️ 需自备 Node 源码编译 | 社区稀缺用例 | ~40 MB | ✅ | 🔴 低 | 排除 |
@@ -123,6 +123,24 @@
 - V3：`WebSocket` 连接 mihomo 日志流不卡死
 - V4：`fetch` 在二进制内无成对的 TLS / DNS 限制
 - V5：`readFileSync(new URL('../package.json', import.meta.url))` 在编译产物里不可用 → **必须改造为 build-time 常量注入**
+
+### 4.1 Spike 实测结论（2026-09-27，bun 1.4.2，内核 v1.19.24 实测环境）
+
+**结论：Bun 路径可行，V1–V5 全部通过，产物 80MB（符合 60–100MB 预期）。** 版本锁定 `bun@1.4.2`。
+
+| 验证点 | 结果 | 证据 |
+| --- | --- | --- |
+| V1 alternateScreen | ✅ | pty 驱动编译产物：`1049h` 进入 / `1049l` 恢复，TUI 渲染正常 |
+| V2 Ctrl+C 退出路径 | ✅ | Ctrl+C 与 ESC→Enter 两路径均 `exit=0` 干净退出（注意：bun 进程收尾与 pty EIO 间有毫秒级竞态，CI 的 waitpid 需轮询收割，非用户可见问题） |
+| V3 WebSocket | ✅ | `logs` 流对真内核 5 秒稳定存活无崩溃 |
+| V4 fetch | ✅ | `status --json` 对真内核 GET /configs 正常返回 |
+| V5 版本注入 | ✅ | `--define globalThis.__MIHOMO_TUI_VERSION__` 生效，`--version` 输出与 package.json 一致；虚拟路径读盘被兜底链优雅处理 |
+
+**构建期发现（三条，均已解决）**：
+
+1. **ink 的 DEV 分支引用 `react-devtools-core`**（npm 生产安装不含此包）。`--external` 无效（编译产物运行时解析失败）；`--define process.env.DEV` 也无效（动态 import 仍进模块图）。**解法：Bun.build 插件在构建期把 `react-devtools-core` 替换为空实现**（编译产物永不进 DEV 模式），由 Checkpoint 4 的 `scripts/build-binary.mjs` 内置该插件。
+2. **`--target bun` 必须显式指定**：缺省按 browser 目标解析，连 `require('module')` 都拒绝。
+3. **代码库大小写碰撞**：`src/components/textEditor.ts`（逻辑）与 `TextEditor.tsx`（视图）仅大小写之差，bun 的解析器会把两者错配（tsc/tsx 无此问题）；这同时也是 macOS 大小写不敏感文件系统上的 checkout 隐患。已将逻辑文件改名 `textEditorModel.ts`。
 
 ---
 
@@ -456,9 +474,9 @@ jobs:
 
 | 风险 | 概率 | 影响 | 缓解 |
 |---|---|---|---|
-| Ink 7 在 Bun 单二进制下 raw-mode/alternateScreen bug | 中 | 高（TUI 不可用） | **Checkpoint 1 实测**；若阻塞切 `deno compile`；或保底方案：二进制模式下禁用 TUI（仅 CLI），文档明示 |
-| `--compile` 产物 `import.meta.url` 不可用 | 高 | 中 | §5 版本号注入改造已解决 |
-| Bun 版本迭代引入 regression | 中 | 中 | `oven-sh/setup-bun@v2` 锁定 `bun-version: 1.x.y`，写入 `release.yml` 与 `package.json` `engines.bun` |
+| Ink 7 在 Bun 单二进制下 raw-mode/alternateScreen bug | 中 | 高（TUI 不可用） | **Checkpoint 1 已实测通过（2026-09-27，见 §4.1）**；残余风险为其余 4 平台交叉编译未实测；若后续阻塞切 `deno compile` |
+| `--compile` 产物 `import.meta.url` 不可用 | 高 | 中 | §5 版本号注入改造已解决（§4.1 V5 实测通过） |
+| Bun 版本迭代引入 regression | 中 | 中 | `oven-sh/setup-bun@v2` 锁定 `bun-version: 1.4.2` 写入 `release.yml`；不加 `package.json` `engines.bun`（bun 仅构建期使用） |
 | 单文件 ~70 MB 用户接受度 | 低 | 低 | 在 README 明示大小；提供 Node 分发作为轻量替代（≈5 MB） |
 | 跨平台交叉编译对 macOS notarize 的需求 | 高 | 低 | 不签名，README 提供 `xattr -d com.apple.quarantine` 指引 |
 | Windows 上 `--version` 输出 UTF-8 中文乱码 | 中 | 低 | 冒烟脚本设 ` LANG=C.UTF-8`；若仍乱码，README 加 `chcp 65001` 说明 |
@@ -521,7 +539,7 @@ jobs:
 
 ## 17. 开放问题
 
-1. **Bun 具体锁定版本**：在 Checkpoint 1 spike 时确定并写入 `release.yml`（候选 `1.1.x` 最新稳定）。是否同时在 `package.json.engines` 加 `bun` 字段需讨论。
+1. ~~**Bun 具体锁定版本**~~ **已收敛（§4.1 spike）**：锁定 `bun@1.4.2` 写入 `release.yml`；不在 `package.json.engines` 加 `bun` 字段（bun 仅构建期使用，运行时零依赖）。
 2. **是否需要 `install.sh` 一键脚本**：当前判断**不需要**（YAGNI），留给 v0.6.0 视用户反馈再议。
 3. **Windows ARM64 是否纳入**：Bun `--target=bun-windows-arm64` 仍标记 experimental；**本版本不纳入**，跟踪上游。
 4. **是否将二进制同时发布为 npm 可选依赖**（`optionalDependencies` + `postinstall`）：社区做法（如 esbuild / swc），但实现复杂；**v0.5.0 不做**。
