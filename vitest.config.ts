@@ -7,9 +7,9 @@ export default defineConfig({
     environment: 'node',
     // 安全网：禁止测试写入真实 mihomo/mihomo-tui 配置目录
     setupFiles: ['vitest.setup.ts'],
-    // 单 fork 复用模块缓存：多进程并发冷启动 ink/react 在机械盘上开销过大
-    pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    // 旧的 poolOptions.forks.singleFork 在 vitest 5 是静默 no-op（v4 起移除），
+    // 已随弃用警告移除。默认并行 fork 实测最快：43 文件全量约 13s，
+    // 单进程序列化（maxWorkers: 1 + isolate: false）约 54s，无需降并发
     coverage: {
       provider: 'v8',
       include: ['src/**'],
