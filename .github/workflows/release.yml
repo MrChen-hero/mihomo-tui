@@ -55,8 +55,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-13（Intel）已被 GitHub 退役：Intel 烟测用 macos-15-intel
           - { os: macos-latest, bin: darwin-arm64 }
-          - { os: macos-13, bin: darwin-x64 }
+          - { os: macos-15-intel, bin: darwin-x64 }
           - { os: windows-latest, bin: windows-x64.exe }
     runs-on: ${{ matrix.os }}
     steps:
