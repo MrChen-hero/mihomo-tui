@@ -222,10 +222,8 @@ git diff --check
 
 - Windows 仅提供 x64 二进制；macOS 提供 x64 与 arm64；Linux 提供 x64 与 arm64。
 - Node.js 全局 `WebSocket` 自 v22.4 起脱离实验状态，更早的小版本（22.0–22.3）未验证。
-- **内核版本建议 v1.19.24**：mihomo v1.19.25+ 存在回归——provider 节点不再注册进
-  `/proxies` 查询表，节点测速会 404（订阅页不受影响）。`kernel install` 不带版本号时
-  会装最新稳定版，遇到该问题请执行 `mihomo-tui kernel install v1.19.24` 降级，或等
-  上游修复后升级。
+- mihomo v1.19.28 起上游将 provider 节点从 `/proxies` 移回 `/providers/proxies`（恢复
+  原版 Clash 行为）。本工具已同时适配新旧两种行为，`kernel install` 可放心安装最新稳定版。
 - 切节点、切模式、临时禁用规则等运行时改动重启内核后不保留。
 - 自建订阅接入约定：节点名请勿内嵌实时流量等易变信息（如 `|📊95.96GB`）——每次订阅
   更新都会改名，测速历史随之作废。
