@@ -5,9 +5,10 @@
 
 ## [Unreleased]
 
+## [0.5.0-rc.3] - 2026-09-28
+
 - `kernel install` 下载进度改为 TTY 下单行进度条原位刷新（非 TTY 保持按 10% 分行）；收尾提示增加「一键开机自启」指引。
 - 新增 `mihomo-tui kernel service install / uninstall`：跨平台一键配置内核开机自启与长期运行（Linux=systemd --user 单元、macOS=launchd LaunchAgent、Windows=登录触发计划任务），幂等零覆盖，linger 提权失败时给出 sudo 提示。
-
 - 无内核报错引导升级为 `--help` 式完整参数教程：快速安装命令、proxy init 一行集成、`--port` / `--mirror` 示例与安装后指引；已部署与已装未启动两个排障分支保持单行。
 
 ## [0.5.0-rc.1] - 2026-09-28
