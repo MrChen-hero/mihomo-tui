@@ -560,6 +560,8 @@ jobs:
 - [ ] **端到端 release 验证（用户操作）**：push `v0.5.0-rc.0` tag 触发 release.yml 全链路（5 产物 attach、3 平台 smoke-matrix、npm 同步发布）
 - [ ] **真机手测（R6/R7）**：macOS Apple Silicon 与 Windows 各跑一次 TUI 进出与 `--version` / `status --json`
 - [ ] **版本发布节奏**：rc tag 前把 `package.json` version bump 为与 tag 一致（如 `v0.5.0-rc.0` ↔ `0.5.0-rc.0`，build job 守卫强制），CHANGELOG 建立对应版本节；正式 `v0.5.0` 时去掉 prerelease 标记
+- [ ] **npm granular token 政策迁移（2027-01 前评估）**：npm 官方预告 2027-01 起 granular token 直接 publish 将移除（改为 stage-only 流程）；现有 token 2026-12-26 到期，重建时需按届时官方文档操作，release.yml publish job 已留前瞻注释
+- [ ] **vitest `poolOptions` 弃用迁移**：vitest 5 运行时警告 `poolOptions` 将在未来大版本移除（迁移为顶层选项）；`vitest.config.ts` 的 `poolOptions.forks.singleFork` 需按官方迁移指南改写（当前仅警告、行为正常）
 
 ---
 
