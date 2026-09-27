@@ -291,7 +291,7 @@ node scripts/build-binary.mjs \
 
 - **包名定稿**：裸名 `mihomo-tui` 已于 2026-06 被第三方抢注（alias 包），scoped 名 `@mrchen-hero/mihomo-tui` 经 registry 实测未占用、与 GitHub 用户名一致；`npm install -g @mrchen-hero/mihomo-tui@latest` 等价可用
 - **`files` 白名单是必须项**：只发 `dist/` + `bin/` + 文档，`node_modules` 自动排除；tsx 属 devDependency 不随全局安装，bin 胶水的 tsx 回退在用户机不可达——**`dist/` 必须随包发布**，胶水脚本命中 dist 分支
-- **`prepare` 与 `prepublishOnly` 分工**：`prepare` 服务 git 直装（`npm install -g github:MrChen-hero/mihomo-tui#main`，registry 发布前的过渡通道）；`prepublishOnly` 服务 registry 发布的三重门禁（typecheck + 全量测试 + build）。注意 `prepare` 在本地 `npm install` 时也会触发一次 build——可接受，CI 中 `npm ci` 顺带产出 `dist/` 与后续步骤复用
+- **`prepare` 与 `prepublishOnly` 分工**：`prepare` 服务 git 直装（`npm install -g github:MrChen-hero/mihomo-tui#main`，registry 发布前的过渡通道）；`prepublishOnly` 服务 registry 发布的三重门禁（typecheck + 全量测试 + build）。注意 `prepare` 在本地 `npm install` 时也会触发一次 build——可接受，CI 中 `npm install` 顺带产出 `dist/` 与后续步骤复用（仓库不提交 package-lock.json，`npm ci` 不可用）。
 - **发布纪律**：git tag（`v*`）↔ `package.json` version ↔ CHANGELOG 三者一致才允许 publish；scoped 包首发必须 `npm publish --access public`
 - **与 @openai/codex 模式的差别**：codex 的 npm 包是「安装器壳」——本体 Rust 二进制经 `optionalDependencies` 按平台分发；本项目 npm 包为纯 JS（`dist/` 直跑），无需该机制，待单二进制落地后按 §17 开放问题 4 评估
 
@@ -327,6 +327,8 @@ sha256  mihomo-tui-0.5.0-linux-x64
 ---
 
 ## 9. CI 工作流设计
+
+**最终实现以 `.github/workflows/release.yml` 为准**。相对本节早期草案的已落地差异：`npm install`（仓库不提交 lockfile，`npm ci` 不可用）；build job 首步有 tag↔package.json version 一致性守卫（workflow_dispatch 时跳过）；`workflow_dispatch` 仅演练 build 与 smoke-matrix，release/publish 两 job 仅在 `refs/tags/v*` 触发；`NPM_TOKEN` 未配置时 publish 步骤自动跳过（链路保持绿）；预发布版本（含 `-`）走 dist-tag `next`；含 `-rc` 的 tag 标记 GitHub prerelease；smoke-matrix 增加 `sha256sum -c` 校验；actions 版本对齐 2026-09 主流（checkout@v5 / setup-node@v7 / artifact@v5 / gh-release@v3）。
 
 新增 `.github/workflows/release.yml`（**不动 `ci.yml`**）：
 
@@ -557,7 +559,7 @@ jobs:
 - [ ] **npm 发布前置（用户操作）**：注册 npm 账号并配置 GitHub Secrets `NPM_TOKEN`（granular token，仅 `@mrchen-hero/mihomo-tui` 的 publish 权限）；publish job 在 token 就绪前以跳过状态存在
 - [ ] **端到端 release 验证（用户操作）**：push `v0.5.0-rc.0` tag 触发 release.yml 全链路（5 产物 attach、3 平台 smoke-matrix、npm 同步发布）
 - [ ] **真机手测（R6/R7）**：macOS Apple Silicon 与 Windows 各跑一次 TUI 进出与 `--version` / `status --json`
-- [ ] **版本发布节奏**：`package.json` bump 0.5.0 与 CHANGELOG `[0.5.0]` 节在 rc tag 阶段完成
+- [ ] **版本发布节奏**：rc tag 前把 `package.json` version bump 为与 tag 一致（如 `v0.5.0-rc.0` ↔ `0.5.0-rc.0`，build job 守卫强制），CHANGELOG 建立对应版本节；正式 `v0.5.0` 时去掉 prerelease 标记
 
 ---
 

@@ -1,0 +1,119 @@
+name: Release
+
+# v* tag 触发端到端发布；workflow_dispatch 用于无 tag 灰度演练
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Guard tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "git tag $GITHUB_REF_NAME 与 package.json version $PKG_VERSION 不一致（spec §16：三者一致才 publish）"
+            exit 1
+          fi
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build all binaries
+        run: node scripts/build-binary.mjs --target all --out-dir dist-bin
+      - name: Smoke linux-x64
+        run: |
+          ./dist-bin/mihomo-tui-*-linux-x64 --version
+          ./dist-bin/mihomo-tui-*-linux-x64 --help
+          set +e
+          ./dist-bin/mihomo-tui-*-linux-x64 status --json
+          test $? -eq 3
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-bin
+          path: dist-bin/
+
+  smoke-matrix:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, bin: darwin-arm64 }
+          - { os: macos-13, bin: darwin-x64 }
+          - { os: windows-latest, bin: windows-x64.exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist-bin
+      - name: Verify checksums
+        shell: bash
+        run: |
+          chmod +x mihomo-tui-* || true
+          sha256sum -c checksums.txt
+      - name: Smoke
+        shell: bash
+        run: ./mihomo-tui-*-${{ matrix.bin }} --version
+
+  release:
+    needs: [build, smoke-matrix]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist-bin
+          path: dist-bin
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist-bin/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+
+  publish:
+    needs: [build, smoke-matrix]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      # granular token（仅 @mrchen-hero/mihomo-tui 的 publish 权限）；未配置时
+      # 本 job 照常通过、publish 步骤跳过——token 就绪前发布链路保持绿
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install dependencies
+        run: npm install
+      - name: Pack dry-run
+        run: npm pack --dry-run
+      - name: Publish to npm
+        if: env.NPM_TOKEN != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # 完整门禁由 prepublishOnly 承担（typecheck + test + build）；
+          # 预发布版本走 dist-tag next，避免 rc 抢占 latest
+          VERSION=$(node -p "require('./package.json').version")
+          case "$VERSION" in *-*) npm publish --access public --tag next ;; *) npm publish --access public ;; esac
+

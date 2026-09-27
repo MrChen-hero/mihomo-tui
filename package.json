@@ -1,11 +1,17 @@
 {
-  "name": "mihomo-tui",
+  "name": "@mrchen-hero/mihomo-tui",
   "version": "0.4.0",
   "description": "CLI + TUI manager for the mihomo proxy kernel (API-driven, with a guarded transactional config layer)",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "author": "MrChen-hero",
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MrChen-hero/mihomo-tui.git"
@@ -38,7 +44,9 @@
     "bundle": "node scripts/build-binary.mjs --target linux-x64",
     "bundle:all": "node scripts/build-binary.mjs --target all",
     "bundle:darwin": "node scripts/build-binary.mjs --target darwin-arm64",
-    "bundle:windows": "node scripts/build-binary.mjs --target windows-x64"
+    "bundle:windows": "node scripts/build-binary.mjs --target windows-x64",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
