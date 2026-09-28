@@ -30,6 +30,9 @@ Thumbs.db
 # 配置文件（本地）
 config.local.json
 
+# 本地协作/代理说明（不入库）
+AGENTS.md
+
 # 临时文件
 tmp/
 temp/
