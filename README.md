@@ -20,9 +20,13 @@ mihomo 目录，全部数据只落本机。
 | --- | --- |
 | ![节点页：左侧代理组列表，右侧节点延迟五档显示](docs/assets/tui-proxies.png) | ![订阅页：订阅列表含节点数、流量进度条与到期时间](docs/assets/tui-subscriptions.png) |
 
-| 规则页：生效规则与规则集 | |
+| 规则页：生效规则与规则集 | 日志页：级别切换与关键字过滤 |
 | --- | --- |
-| ![规则页：生效规则列表与规则集](docs/assets/tui-rules.png) | |
+| ![规则页：生效规则列表与规则集](docs/assets/tui-rules.png) | ![日志页：WebSocket 日志流，支持级别切换与关键字过滤](docs/assets/tui-logs.png) |
+
+| 连接页：实时连接，按流量排序与关闭 | 设置页：程序配置与内核版本管理 |
+| --- | --- |
+| ![连接页：实时连接列表，支持按流量排序与关闭](docs/assets/tui-connections.png) | ![设置页：程序配置与内核版本管理](docs/assets/tui-settings.png) |
 
 ## 能做什么
 
@@ -95,12 +99,6 @@ grep linux-x64 checksums.txt | sha256sum -c -   # checksums.txt 含全部五个�
 chmod +x mihomo-tui-*-linux-x64
 ```
 
-### 发布机制
-
-推送 `v*` tag 触发 [.github/workflows/release.yml](.github/workflows/release.yml)：五平台
-交叉编译、三平台冒烟、Release 附加产物与 npm 同步发布；`-rc` 后缀的 tag 自动标记预发布并
-发布到 npm 的 `next` dist-tag。项目未提供 Docker 或云平台部署配置。
-
 ### 卸载内核
 
 `kernel install` 装的二进制、归档与引导配置，手工清理：
@@ -126,34 +124,63 @@ mihomo-tui status
 
 ## 第一次使用
 
-1. **还没有 mihomo 内核？** 一条命令自助闭环：
+### 1. 安装内核（已有内核可跳过）
 
-   ```bash
-   mihomo-tui kernel install     # 下载安装最新稳定版内核 + 生成最小引导配置
-   mihomo-tui kernel service install   # 可选：一键开机自启（systemd/launchd/计划任务）
-   ```
+还没有 mihomo 内核时，一条命令完成下载安装与最小引导配置：
 
-   官方源失败自动回退镜像（可 `--mirror` 指定、`--port` 自定义控制口端口）；`config.yaml`
-   已存在时绝不触碰。已有内核的用户跳过本步。
-2. `mihomo-tui status` 确认内核可达，输出内核版本、模式、端口与 provider 概览；连不上时
-   检查内核是否已启动（安装但未启动的场景报错会单独提示）、`external-controller` 地址与
-   `secret` 是否正确。
-3. `~/.config/mihomo-tui/config.json` 首次运行自动生成，确认 `api`、`secret` 与
-   `mihomoDir`（订阅事务和规则编辑器写 `config.yaml` 的位置）指向你的内核。
-4. 进入 TUI（直接运行 `mihomo-tui`），在订阅页按 `a` 新增订阅；已有「整份订阅」旧配置的
-   用户可用 `node scripts/migrate-config.mjs --dry-run --diff` 预览改造方案，确认后 `--apply`。
-5. 节点页 `Enter` 选用节点、`t` 测速；订阅页 `u` 更新当前订阅、`U` 全部更新。
-6. 要用 `proxy on` / `proxy off` / `proxy status` 快捷命令管理本 shell 的系统代理环境变量，
-   把集成装进 bashrc（首次运行 `mihomo-tui` 时命令行也会输出同样提示）：
+```bash
+mihomo-tui kernel install            # 下载最新稳定版内核 + 生成最小引导配置
+mihomo-tui kernel service install    # 可选：一键开机自启（systemd / launchd / 计划任务）
+```
 
-   ```bash
-   echo 'eval "$(mihomo-tui proxy init)"' >> ~/.bashrc && source ~/.bashrc
-   proxy on        # 开启本 shell 的系统代理，端口自动发现
-   ```
-7. 备份与迁移：配置变更自动留 `config.yaml.bak.*`（保留 7 天）；换设备时拷贝
-   `~/.config/mihomo-tui/` 与 mihomo 目录即可完整复原。
-8. 注意：新增 / 删除订阅会重启一次 mihomo 服务（秒级断流，更新不断流）；切节点、切模式等
-   运行时改动重启后丢失，需持久化的变更写入 `config.yaml` 后执行 `mihomo-tui reload`。
+官方源失败自动回退镜像，可用 `--mirror` 指定镜像、`--port` 自定义控制口端口；已存在的
+`config.yaml` 绝不触碰。
+
+### 2. 确认内核可达
+
+```bash
+mihomo-tui status                    # 输出内核版本、模式、端口与 provider 概览
+```
+
+连不上时依次检查：内核是否已启动（安装但未启动会单独提示）、`external-controller` 地址、
+`secret` 是否正确。程序配置 `~/.config/mihomo-tui/config.json` 首次运行自动生成，确认其中
+`api`、`secret` 与 `mihomoDir`（订阅事务和规则编辑器写 `config.yaml` 的位置）都指向你的内核。
+
+### 3. 加订阅、选节点
+
+直接运行 `mihomo-tui` 进入 TUI：
+
+```bash
+mihomo-tui                           # 进入 TUI
+```
+
+- 订阅页：`a` 新增订阅、`u` 更新当前订阅、`U` 全部更新。
+- 节点页：`Enter` 选用节点、`t` 测速。
+
+已有「整份订阅」旧配置的用户，先预览改造方案再应用：
+
+```bash
+node scripts/migrate-config.mjs --dry-run --diff   # 预览
+node scripts/migrate-config.mjs --apply            # 确认后应用
+```
+
+### 4. （可选）shell 系统代理集成
+
+把集成装进 `~/.bashrc` 后即可用 `proxy on` / `proxy off` / `proxy status` 管理本 shell 的
+系统代理环境变量（首次运行 `mihomo-tui` 也会输出同样提示）：
+
+```bash
+echo 'eval "$(mihomo-tui proxy init)"' >> ~/.bashrc && source ~/.bashrc
+proxy on                             # 开启本 shell 的系统代理，端口自动发现
+```
+
+### 须知
+
+- **备份与迁移**：配置变更自动留 `config.yaml.bak.*`（保留 7 天）；换设备时拷贝
+  `~/.config/mihomo-tui/` 与 mihomo 目录即可完整复原。
+- **重启行为**：新增 / 删除订阅会重启一次 mihomo 服务（秒级断流，更新本身不断流）；切节点、
+  切模式等运行时改动重启后丢失，需持久化的变更写入 `config.yaml` 后执行 `mihomo-tui reload`。
+
 
 ## CLI 速查
 
