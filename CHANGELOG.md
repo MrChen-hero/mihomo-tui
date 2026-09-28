@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-28
+
+- 首个正式版，汇总 rc.0–rc.6 的全部变更，功能与 `0.5.0-rc.6` 一致。核心能力：mihomo（Clash.Meta）内核的 CLI + TUI 管理——六页 TUI（节点 / 订阅 / 规则 / 日志 / 连接 / 设置）、订阅事务（更新不覆盖手写 `config.yaml`）、规则编辑器、内核安装与服务化、shell 系统代理集成；完整适配 mihomo v1.19.28+ 的 provider 节点 API 行为变更。
+
 ## [0.5.0-rc.6] - 2026-09-28
 
 - 完整适配 mihomo v1.19.28+ 的 API 行为变更（上游 85c1798f 有意恢复原版 Clash 行为：provider 节点不再合并进 `/proxies`，按节点名的查询与测速也不再回退到 provider）。节点视图改为 `/proxies` + `/providers/proxies` 合并——节点的类型、延迟历史、provider 归属恢复完整；provider 节点的单节点测速统一改走 `/providers/proxies/{provider}/{node}/healthcheck`（新旧内核同形，无需按内核版本分支）；rc.5 的组测速端点与 overlay 兜底保持不变。

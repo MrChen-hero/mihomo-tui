@@ -1,6 +1,6 @@
 {
   "name": "@morndream/mihomo-tui",
-  "version": "0.5.0-rc.6",
+  "version": "0.5.0",
   "description": "CLI + TUI manager for the mihomo proxy kernel (API-driven, with a guarded transactional config layer)",
   "type": "module",
   "license": "MIT",
